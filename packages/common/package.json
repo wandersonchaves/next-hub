@@ -1,0 +1,16 @@
+{
+  "name": "@enterprise/common",
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "echo 'No dev needed'"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "prisma": "^7.8.0"
+  }
+}

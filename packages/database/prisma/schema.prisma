@@ -1,0 +1,254 @@
+generator client {
+  provider        = "prisma-client-js"
+  output          = "../src/generated/client"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  extensions = [pgvector(map: "vector")]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  clerkId      String?   @unique
+  name         String?
+  email        String    @unique
+  passwordHash String?
+  avatarUrl    String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships Member[]
+  invitesSent Invite[]   @relation("InviteSender")
+  auditLogs   AuditLog[]
+  accounts    Account[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  provider          String
+  providerAccountId String
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+enum Role {
+  OWNER
+  ADMIN
+  MEMBER
+  BILLING
+  VIEWER
+}
+
+enum Plan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  INCOMPLETE
+}
+
+model Organization {
+  id         String   @id @default(cuid())
+  clerkId    String?  @unique
+  name       String
+  slug       String   @unique
+  avatarUrl  String?
+  brandColor String?  @default("#0f172a")
+  logoUrl    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  members             Member[]
+  invites             Invite[]
+  subscription        Subscription?
+  documents           Document[]
+  webhooks            Webhook[]
+  apiKeys             ApiKey[]
+  auditLogs           AuditLog[]
+  plugins             Plugin[]
+  installedExtensions InstalledExtension[]
+  workflows           Workflow[]
+}
+
+model Subscription {
+  id                   String             @id @default(cuid())
+  organizationId       String             @unique
+  stripeCustomerId     String?            @unique
+  stripeSubscriptionId String?            @unique
+  plan                 Plan               @default(FREE)
+  status               SubscriptionStatus @default(ACTIVE)
+  currentPeriodEnd     DateTime?
+  updatedAt            DateTime           @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Member {
+  id             String @id @default(cuid())
+  role           Role   @default(MEMBER)
+  organizationId String
+  userId         String
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@index([organizationId])
+}
+
+model Document {
+  id             String                       @id @default(cuid())
+  content        String
+  embedding      Unsupported("vector(1536)")?
+  organizationId String
+  createdAt      DateTime                     @default(now())
+  updatedAt      DateTime                     @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Invite {
+  id        String   @id @default(cuid())
+  email     String
+  role      Role     @default(MEMBER)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  organizationId String
+  authorId       String?
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author       User?        @relation("InviteSender", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, email])
+}
+
+model Webhook {
+  id             String   @id @default(cuid())
+  url            String
+  secret         String
+  events         String[]
+  active         Boolean  @default(true)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model ApiKey {
+  id             String   @id @default(cuid())
+  key            String   @unique
+  displayKey     String
+  name           String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model AuditLog {
+  id             String   @id @default(cuid())
+  action         String
+  entity         String
+  entityId       String?
+  userId         String
+  organizationId String
+  metadata       Json?
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime @default(now())
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+  @@index([userId])
+}
+
+model Plugin {
+  id             String   @id @default(cuid())
+  name           String
+  description    String?
+  code           String
+  events         String[]
+  active         Boolean  @default(true)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model MarketplaceExtension {
+  id           String   @id @default(cuid())
+  name         String
+  slug         String   @unique
+  description  String
+  author       String
+  iconUrl      String?
+  configSchema Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  installations InstalledExtension[]
+}
+
+model InstalledExtension {
+  id             String   @id @default(cuid())
+  extensionId    String
+  organizationId String
+  config         Json?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  extension    MarketplaceExtension @relation(fields: [extensionId], references: [id])
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([extensionId, organizationId])
+}
+
+model Workflow {
+  id             String   @id @default(cuid())
+  name           String
+  triggerEvent   String
+  active         Boolean  @default(true)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  steps        WorkflowStep[]
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model WorkflowStep {
+  id         String @id @default(cuid())
+  workflowId String
+  type       String
+  config     Json?
+  order      Int
+
+  workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,13 @@
+{
+  "name": "@enterprise/events",
+  "version": "0.1.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "dev": "echo 'No dev needed'"
+  },
+  "dependencies": {
+    "bullmq": "^5.7.0",
+    "zod": "^3.22.4"
+  }
+}
