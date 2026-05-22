@@ -52,6 +52,8 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
     })
       .overrideGuard(ClerkGuard)
       .useValue(mockClerkGuard)
+      .overrideProvider(ClerkGuard)
+      .useValue(mockClerkGuard)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -77,12 +79,16 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
 
   afterAll(async () => {
     // Cleanup
-    await prisma.client.member.deleteMany({ where: { userId } });
-    await prisma.client.invite.deleteMany({ where: { authorId: userId } });
-    if (orgId) {
-      await prisma.client.organization.deleteMany({ where: { id: orgId } });
+    if (userId) {
+      await prisma.client.member.deleteMany({ where: { userId } }).catch(() => {});
+      await prisma.client.invite.deleteMany({ where: { authorId: userId } }).catch(() => {});
     }
-    await prisma.client.user.deleteMany({ where: { id: userId } });
+    if (orgId) {
+      await prisma.client.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+    }
+    if (userId) {
+      await prisma.client.user.deleteMany({ where: { id: userId } }).catch(() => {});
+    }
     await app.close();
   });
 
@@ -104,6 +110,7 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
   });
 
   it('/organizations/:orgSlug/invites (POST) - Success and Async e-mail queued', async () => {
+    if (!orgId) throw new Error('orgId is not defined from previous test');
     const org = await prisma.client.organization.findUnique({ where: { id: orgId } });
     await request(app.getHttpServer())
       .post(`/organizations/${org.slug}/invites`)
@@ -114,6 +121,7 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
   });
 
   it('/organizations/:orgSlug/invites (POST) - Fail on Duplicate (409 Conflict)', async () => {
+    if (!orgId) throw new Error('orgId is not defined from previous test');
     const org = await prisma.client.organization.findUnique({ where: { id: orgId } });
     const res = await request(app.getHttpServer())
       .post(`/organizations/${org.slug}/invites`)
@@ -126,6 +134,7 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
   });
 
   it('/analytics/dashboard (GET) - Cache isolation test', async () => {
+    if (!orgId) throw new Error('orgId is not defined from previous test');
     // 1. Initial request (populate cache)
     await request(app.getHttpServer())
       .get('/analytics/dashboard')

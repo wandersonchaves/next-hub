@@ -62,6 +62,8 @@ describe('Multi-tenancy Isolation (E2E)', () => {
     })
       .overrideGuard(ClerkGuard)
       .useValue(mockClerkGuard)
+      .overrideProvider(ClerkGuard)
+      .useValue(mockClerkGuard)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -134,14 +136,16 @@ describe('Multi-tenancy Isolation (E2E)', () => {
 
   afterAll(async () => {
     // Cleanup in reverse order
-    if (userA && userB) {
-      await prisma.client.member.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } });
-      await prisma.client.branch.deleteMany({ where: { id: { in: [branchA.id, branchB.id] } } });
-      await prisma.client.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } });
-    }
-    if (orgA && orgB) {
-      await prisma.client.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } });
-    }
+    try {
+      if (userA && userB) {
+        await prisma.client.member.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } }).catch(() => {});
+        await prisma.client.branch.deleteMany({ where: { id: { in: [branchA.id, branchB.id] } } }).catch(() => {});
+        await prisma.client.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } }).catch(() => {});
+      }
+      if (orgA && orgB) {
+        await prisma.client.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } }).catch(() => {});
+      }
+    } catch (e) {}
     
     await app.close();
   });
