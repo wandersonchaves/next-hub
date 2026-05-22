@@ -35,7 +35,7 @@ export class ClerkGuard implements CanActivate {
       const sessionClaims = await verifyToken(token, {
         secretKey: this.secretKey,
       });
-      
+
       const clerkUserId = sessionClaims.sub as string;
       const clerkOrgId = sessionClaims.org_id as string | undefined;
 
@@ -72,25 +72,25 @@ export class ClerkGuard implements CanActivate {
       }
 
       request['user'] = user;
-      
+
       // LAZY SYNC: Se o usuário não tem nenhuma membership no nosso banco, 
       // ou se temos um clerkOrgId ativo que ainda não está sincronizado, sincronizamos.
       const shouldSync = (user.memberships.length === 0) || (clerkOrgId && !user.memberships.find(m => m.organization.clerkId === clerkOrgId));
 
       if (shouldSync) {
         // console.log(`Syncing memberships for user ${clerkUserId}`);
-        
+
         try {
           // Busca todas as memberships do usuário no Clerk
-          const { data: clerkMemberships } = await this.clerkClient.users.getOrganizationMembershipList({ 
-            userId: clerkUserId 
+          const { data: clerkMemberships } = await this.clerkClient.users.getOrganizationMembershipList({
+            userId: clerkUserId
           });
 
           for (const cm of clerkMemberships) {
             const org = await this.prisma.client.organization.upsert({
               where: { clerkId: cm.organization.id },
-              update: { 
-                name: cm.organization.name, 
+              update: {
+                name: cm.organization.name,
                 avatarUrl: cm.organization.imageUrl,
                 slug: cm.organization.slug || undefined
               },
@@ -134,9 +134,18 @@ export class ClerkGuard implements CanActivate {
         if (activeMembership) {
           request['organization'] = activeMembership.organization;
           request['membership'] = activeMembership;
+
+          const branchId = request.headers['x-branch-id'] || request.headers['branch-id'];
+
+          // Opcionalmente injeta no AsyncLocalStorage se for necessário dentro do Guard ou serviços chamados por ele
+          // Nota: Interceptors são mais adequados para o ciclo de vida da request como um todo, 
+          // mas Guards podem precisar disso se fizerem queries em tabelas tenant-aware.
+          if (activeMembership.organization.id) {
+            // Apenas um lembrete: o Interceptor também fará isso.
+          }
         }
       }
-      
+
       return true;
     } catch (error) {
       console.error('Clerk Auth Guard Error:', error);
@@ -151,7 +160,7 @@ export class ClerkGuard implements CanActivate {
 
   private mapClerkRole(clerkRole: string): string {
     if (!clerkRole) return 'MEMBER';
-    
+
     switch (clerkRole.toLowerCase()) {
       case 'org:admin':
         return 'ADMIN';
@@ -163,12 +172,12 @@ export class ClerkGuard implements CanActivate {
         // Fallback para papéis customizados ou formatos diretos (ADMIN, MEMBER, etc)
         const parts = clerkRole.split(':');
         const roleName = (parts[parts.length - 1] || '').toUpperCase();
-        
+
         const validRoles = ['OWNER', 'ADMIN', 'MEMBER', 'BILLING', 'VIEWER'];
         if (validRoles.includes(roleName)) {
           return roleName;
         }
-        
+
         return 'MEMBER';
     }
   }
