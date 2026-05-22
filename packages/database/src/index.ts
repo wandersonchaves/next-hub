@@ -25,6 +25,11 @@ export const tenantContext = new AsyncLocalStorage<{ organizationId: string; bra
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
 const adapter = new PrismaPg(pool)
 
+export async function disconnect() {
+  await prisma.$disconnect()
+  await pool.end()
+}
+
 export const prisma = new PrismaClient({
   adapter,
 }).$extends({
