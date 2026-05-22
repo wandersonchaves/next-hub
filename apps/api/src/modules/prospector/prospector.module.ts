@@ -3,7 +3,7 @@ import { ProspectorController } from './prospector.controller';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
-import { OrganizationModule } from '../../organization/organization.module';
+import { OrganizationModule } from '../../core/organization/organization.module';
 
 @Module({
   imports: [OrganizationModule],

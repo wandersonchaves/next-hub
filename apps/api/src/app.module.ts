@@ -2,35 +2,41 @@ import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { HealthController } from './health/health.controller';
-import { OrganizationModule } from './organization/organization.module';
+import { HealthController } from './core/health/health.controller';
+import { OrganizationModule } from './core/organization/organization.module';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 
-import { BillingModule } from './billing/billing.module';
+import { BillingModule } from './core/billing/billing.module';
 
 import { BullModule } from '@nestjs/bullmq';
-import { NotificationsModule } from './notifications/notifications.module';
+import { NotificationsModule } from './core/notifications/notifications.module';
 
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ProspectorModule } from './modules/prospector/prospector.module';
 
-import { AnalyticsModule } from './analytics/analytics.module';
+import { AnalyticsModule } from './core/analytics/analytics.module';
+import { AuditLogsModule } from './core/audit-logs/audit-logs.module';
 
-import { TasksModule } from './tasks/tasks.module';
+import { TasksModule } from './core/tasks/tasks.module';
 
-import { WebhooksModule } from './webhooks/webhooks.module';
+import { WebhooksModule } from './common/webhooks/webhooks.module';
 
-import { BackupModule } from './backup/backup.module';
+import { BackupModule } from './core/backup/backup.module';
 
-import { PluginsModule } from './plugins/plugins.module';
+import { PluginsModule } from './core/plugins/plugins.module';
 
-import { MarketplaceModule } from './marketplace/marketplace.module';
+import { MarketplaceModule } from './core/marketplace/marketplace.module';
 
 import { validateEnv } from './common/config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
+import { ClerkGuard } from './common/guards/clerk.guard';
+import { MembershipGuard } from './common/guards/membership.guard';
+import { RolesGuard } from './common/guards/roles.guard';
+import { BranchIsolationGuard } from './common/guards/branch-isolation.guard';
+import { PermissionsGuard } from './common/guards/permissions.guard';
 
 @Module({
   imports: [
@@ -42,6 +48,7 @@ import { PrismaModule } from './prisma/prisma.module';
     OrganizationModule,
     BillingModule,
     NotificationsModule,
+    AuditLogsModule,
     ProspectorModule,
     AnalyticsModule,
     TasksModule,
@@ -71,7 +78,14 @@ import { PrismaModule } from './prisma/prisma.module';
     }),
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    ClerkGuard,
+    MembershipGuard,
+    RolesGuard,
+    BranchIsolationGuard,
+    PermissionsGuard,
+  ],
 })
 export class AppModule implements OnModuleDestroy {
   constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) { }

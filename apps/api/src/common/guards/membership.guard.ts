@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { GetMembershipService } from '../../organization/get-membership.service';
+import { GetMembershipService } from '../../core/organization/get-membership.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { Role } from '@enterprise/database';
 
