@@ -45,6 +45,8 @@ model Branch {
   appointments    Appointment[]
   userPermissions UserBranchPermission[]
   procedures      Procedure[]
+  pets            Pet[]
+  petServices     PetService[]
 
   @@index([organizationId])
 }
@@ -58,6 +60,58 @@ model Procedure {
   branchId          String
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+enum PetSize {
+  SMALL
+  MEDIUM
+  LARGE
+  GIANT
+}
+
+enum PetServiceType {
+  BATH
+  GROOMING
+  VET
+}
+
+model Pet {
+  id             String    @id @default(cuid())
+  name           String
+  breed          String?
+  size           PetSize   @default(MEDIUM)
+  weight         Float?
+  lastBathAt     DateTime?
+  tutorId        String
+  organizationId String
+  branchId       String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([tutorId])
+}
+
+model PetService {
+  id                String         @id @default(cuid())
+  name              String
+  price             Decimal
+  durationInMinutes Int
+  type              PetServiceType @default(BATH)
+  organizationId    String
+  branchId          String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
@@ -184,6 +238,8 @@ model Organization {
   leads               Lead[]
   appointments        Appointment[]
   procedures          Procedure[]
+  pets                Pet[]
+  petServices     PetService[]
 }
 
 model Subscription {
