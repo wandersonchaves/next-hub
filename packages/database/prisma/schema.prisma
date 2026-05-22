@@ -10,27 +10,112 @@ datasource db {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  clerkId      String?   @unique
+  id           String   @id @default(cuid())
+  clerkId      String?  @unique
   name         String?
-  email        String    @unique
+  email        String   @unique
   passwordHash String?
   avatarUrl    String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  memberships Member[]
-  invitesSent Invite[]   @relation("InviteSender")
-  auditLogs   AuditLog[]
-  accounts    Account[]
+  memberships       Member[]
+  invitesSent       Invite[]               @relation("InviteSender")
+  auditLogs         AuditLog[]
+  accounts          Account[]
+  branchPermissions UserBranchPermission[]
+}
+
+enum BranchType {
+  HEALTH
+  PET
+  CORE
+}
+
+model Branch {
+  id             String     @id @default(cuid())
+  name           String
+  type           BranchType @default(CORE)
+  organizationId String
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  leads           Lead[]
+  appointments    Appointment[]
+  userPermissions UserBranchPermission[]
+
+  @@index([organizationId])
+}
+
+model Lead {
+  id                String   @id @default(cuid())
+  name              String
+  email             String?
+  phone             String
+  status            String   @default("NEW")
+  score             Int      @default(0)
+  industry          String?
+  lastInteractionAt DateTime @default(now())
+  branchId          String
+  organizationId    String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch       Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
+
+  @@unique([phone, organizationId])
+  @@index([organizationId])
+  @@index([branchId])
+}
+
+model Appointment {
+  id             String   @id @default(cuid())
+  title          String
+  startTime      DateTime
+  endTime        DateTime
+  googleEventId  String?
+  status         String   @default("SCHEDULED")
+  leadId         String
+  branchId       String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([leadId])
+}
+
+model UserBranchPermission {
+  id          String   @id @default(cuid())
+  userId      String
+  branchId    String
+  role        String
+  permissions String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@index([userId])
+  @@index([branchId])
 }
 
 model Account {
-  id                String  @id @default(cuid())
+  id                String @id @default(cuid())
   userId            String
   provider          String
   providerAccountId String
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -77,6 +162,9 @@ model Organization {
   plugins             Plugin[]
   installedExtensions InstalledExtension[]
   workflows           Workflow[]
+  branches            Branch[]
+  leads               Lead[]
+  appointments        Appointment[]
 }
 
 model Subscription {
