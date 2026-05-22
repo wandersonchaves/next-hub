@@ -15,7 +15,8 @@ import {
   Menu,
   History,
   Sparkles,
-  Heart
+  Heart,
+  Dog
 } from "lucide-react";
 
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
@@ -31,6 +32,7 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
   const navigation = [
     { name: "Dashboard", href: `/${orgSlug}`, icon: LayoutDashboard },
     { name: "Nexus Health", href: `/${orgSlug}/nexus-health`, icon: Heart },
+    { name: "Nexus Pet", href: `/${orgSlug}/nexus-pet`, icon: Dog },
     { name: "IA Assistant", href: `/${orgSlug}/ai`, icon: Sparkles },
     { name: "Documentos", href: `/${orgSlug}/documents`, icon: FileText },
     { name: "Audit Logs", href: `/${orgSlug}/audit-logs`, icon: History },
