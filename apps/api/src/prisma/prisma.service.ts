@@ -7,14 +7,15 @@ import pg from 'pg';
 export class PrismaService implements OnModuleInit, OnModuleDestroy {
   private _prisma: ExtendedPrismaClient;
   private _readReplica?: PrismaClient;
+  private _pool?: pg.Pool;
 
   constructor() {
     this._prisma = prisma;
-    
+
     // In production, we initialize a separate read-only client for replicas
     if (process.env.DATABASE_URL_READ_REPLICA) {
-      const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL_READ_REPLICA });
-      const adapter = new PrismaPg(pool);
+      this._pool = new pg.Pool({ connectionString: process.env.DATABASE_URL_READ_REPLICA });
+      const adapter = new PrismaPg(this._pool);
       this._readReplica = new PrismaClient({
         adapter,
       });
@@ -42,6 +43,9 @@ export class PrismaService implements OnModuleInit, OnModuleDestroy {
     await this._prisma.$disconnect();
     if (this._readReplica) {
       await this._readReplica.$disconnect();
+    }
+    if (this._pool) {
+      await this._pool.end();
     }
   }
 }
