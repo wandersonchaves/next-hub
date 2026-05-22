@@ -1,41 +1,88 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication, ValidationPipe, CanActivate, ExecutionContext } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { PrismaService } from '../src/prisma/prisma.service';
+import { ClerkGuard } from '../src/common/guards/clerk.guard';
+import * as jwt from 'jsonwebtoken';
 
 describe('Organization Management & Async Side-effects (e2e)', () => {
   let app: INestApplication;
+  let prisma: PrismaService;
   let accessToken: string;
   let orgId: string;
+  let userId: string;
+  const jwtSecret = 'test-secret';
+
+  // Mock ClerkGuard to bypass remote token verification
+  const mockClerkGuard: CanActivate = {
+    canActivate: async (context: ExecutionContext) => {
+      const req = context.switchToHttp().getRequest();
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return false;
+
+      const token = authHeader.split(' ')[1];
+      try {
+        const payload = jwt.verify(token, jwtSecret) as any;
+        const user = await prisma.client.user.findUnique({
+          where: { clerkId: payload.sub },
+          include: { memberships: { include: { organization: true } } }
+        });
+
+        if (!user) return false;
+
+        req['user'] = user;
+        if (payload.org_id) {
+          const membership = user.memberships.find(m => m.organization.clerkId === payload.org_id);
+          if (membership) {
+            req['membership'] = membership;
+            req['organization'] = membership.organization;
+          }
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
+  };
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideGuard(ClerkGuard)
+      .useValue(mockClerkGuard)
+      .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalPipes(new ValidationPipe());
+    app.useGlobalPipes(new ValidationPipe({ transform: true }));
     await app.init();
 
-    // Setup: Register and Login to get a token
-    const testUser = {
-      email: `org-test-${Date.now()}@example.com`,
-      password: 'password123',
-      name: 'Org Tester',
-    };
+    prisma = app.get<PrismaService>(PrismaService);
 
-    await request(app.getHttpServer())
-      .post('/auth/register')
-      .send(testUser);
+    // Create a test user directly in DB
+    const clerkUserId = 'user_' + Date.now();
+    const user = await prisma.client.user.create({
+      data: {
+        email: `org-test-${Date.now()}@example.com`,
+        clerkId: clerkUserId,
+        name: 'Org Tester',
+      },
+    });
+    userId = user.id;
 
-    const loginRes = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ email: testUser.email, password: testUser.password });
-    
-    accessToken = loginRes.body.access_token;
+    // Generate a valid mock JWT
+    accessToken = jwt.sign({ sub: clerkUserId }, jwtSecret);
   });
 
   afterAll(async () => {
+    // Cleanup
+    await prisma.client.member.deleteMany({ where: { userId } });
+    await prisma.client.invite.deleteMany({ where: { authorId: userId } });
+    if (orgId) {
+      await prisma.client.organization.deleteMany({ where: { id: orgId } });
+    }
+    await prisma.client.user.deleteMany({ where: { id: userId } });
     await app.close();
   });
 
@@ -49,22 +96,29 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
     orgId = res.body.id;
     expect(orgId).toBeDefined();
     expect(res.body.name).toBe('Test Corp');
+
+    // Update token to include org context for subsequent tests
+    const user = await prisma.client.user.findUnique({ where: { id: userId }, include: { memberships: { include: { organization: true } } } });
+    const membership = user.memberships.find(m => m.organizationId === orgId);
+    accessToken = jwt.sign({ sub: user.clerkId, org_id: membership.organization.clerkId }, jwtSecret);
   });
 
-  it('/organizations/:id/invites (POST) - Success and Async e-mail queued', async () => {
+  it('/organizations/:orgSlug/invites (POST) - Success and Async e-mail queued', async () => {
+    const org = await prisma.client.organization.findUnique({ where: { id: orgId } });
     await request(app.getHttpServer())
-      .post(`/organizations/${orgId}/invites`)
+      .post(`/organizations/${org.slug}/invites`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('organization-id', orgId)
+      .set('x-organization-id', orgId)
       .send({ email: 'new-member@example.com', role: 'MEMBER' })
       .expect(201);
   });
 
-  it('/organizations/:id/invites (POST) - Fail on Duplicate (409 Conflict)', async () => {
+  it('/organizations/:orgSlug/invites (POST) - Fail on Duplicate (409 Conflict)', async () => {
+    const org = await prisma.client.organization.findUnique({ where: { id: orgId } });
     const res = await request(app.getHttpServer())
-      .post(`/organizations/${orgId}/invites`)
+      .post(`/organizations/${org.slug}/invites`)
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('organization-id', orgId)
+      .set('x-organization-id', orgId)
       .send({ email: 'new-member@example.com', role: 'MEMBER' })
       .expect(409);
     
@@ -76,19 +130,15 @@ describe('Organization Management & Async Side-effects (e2e)', () => {
     await request(app.getHttpServer())
       .get('/analytics/dashboard')
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('organization-id', orgId)
+      .set('x-organization-id', orgId)
       .expect(200);
 
-    // 2. Request with different org ID should NOT return cached data from the first one
+    // 2. Request with different org ID should return 403 Forbidden (Isolation)
     const otherOrgId = 'other-org-id';
-    const res = await request(app.getHttpServer())
+    await request(app.getHttpServer())
       .get('/analytics/dashboard')
       .set('Authorization', `Bearer ${accessToken}`)
-      .set('organization-id', otherOrgId)
-      .expect(200);
-    
-    // If cache isolation works, it should reach the service and compute stats for the new ID
-    // Our AnalyticsService returns growthData for the given ID
-    expect(res.body.growthData).toBeDefined();
+      .set('x-organization-id', otherOrgId)
+      .expect(403);
   });
 });
