@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { WebhooksService } from './webhooks.service';
 import { WebhooksProcessor } from './webhooks.processor';
-import { PrismaService } from '../prisma/prisma.service';
 import { ClerkWebhookController } from './clerk-webhook.controller';
 
 @Module({
@@ -12,7 +11,7 @@ import { ClerkWebhookController } from './clerk-webhook.controller';
     }),
   ],
   controllers: [ClerkWebhookController],
-  providers: [WebhooksService, WebhooksProcessor, PrismaService],
+  providers: [WebhooksService, WebhooksProcessor],
   exports: [WebhooksService],
 })
-export class WebhooksModule {}
+export class WebhooksModule { }

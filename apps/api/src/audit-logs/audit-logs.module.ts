@@ -2,7 +2,6 @@ import { Module, forwardRef } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { AuditLogsService } from './audit-logs.service';
 import { AuditLogsProcessor } from './audit-logs.processor';
-import { PrismaService } from '../prisma/prisma.service';
 import { AuditLogsController } from './audit-logs.controller';
 import { OrganizationModule } from '../organization/organization.module';
 
@@ -14,7 +13,7 @@ import { OrganizationModule } from '../organization/organization.module';
     forwardRef(() => OrganizationModule),
   ],
   controllers: [AuditLogsController],
-  providers: [AuditLogsService, AuditLogsProcessor, PrismaService],
+  providers: [AuditLogsService, AuditLogsProcessor],
   exports: [AuditLogsService],
 })
-export class AuditLogsModule {}
+export class AuditLogsModule { }
