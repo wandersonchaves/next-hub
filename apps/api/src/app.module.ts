@@ -16,6 +16,7 @@ import { NotificationsModule } from './core/notifications/notifications.module';
 
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ProspectorModule } from './modules/prospector/prospector.module';
+import { NexusHealthModule } from './modules/nexus-health/nexus-health.module';
 
 import { AnalyticsModule } from './core/analytics/analytics.module';
 import { AuditLogsModule } from './core/audit-logs/audit-logs.module';
@@ -50,6 +51,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     NotificationsModule,
     AuditLogsModule,
     ProspectorModule,
+    NexusHealthModule,
     AnalyticsModule,
     TasksModule,
     WebhooksModule,
