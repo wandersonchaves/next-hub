@@ -2,9 +2,9 @@ services:
   postgres:
     image: pgvector/pgvector:pg15
     environment:
-      POSTGRES_USER: saas_user
-      POSTGRES_PASSWORD: saas_password
-      POSTGRES_DB: saas_db
+      POSTGRES_USER: next_hub_user
+      POSTGRES_PASSWORD: next_hub_password
+      POSTGRES_DB: next_hub_db
     ports:
       - "5432:5432"
     volumes:
