@@ -1,11 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './health/health.controller';
 import { OrganizationModule } from './organization/organization.module';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
-import { CacheModule } from '@nestjs/cache-manager';
+import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 
 import { BillingModule } from './billing/billing.module';
@@ -72,4 +73,19 @@ import { PrismaModule } from './prisma/prisma.module';
   controllers: [AppController, HealthController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule implements OnModuleDestroy {
+  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) { }
+
+  async onModuleDestroy() {
+    // cache-manager v7 uses 'stores' instead of 'store'
+    const stores = (this.cacheManager as any).stores;
+    if (Array.isArray(stores)) {
+      for (const store of stores) {
+        if (store.client && typeof store.client.disconnect === 'function') {
+          await store.client.disconnect();
+        }
+      }
+    }
+  }
+}
+
