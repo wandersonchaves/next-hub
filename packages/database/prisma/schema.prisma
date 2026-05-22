@@ -44,8 +44,26 @@ model Branch {
   leads           Lead[]
   appointments    Appointment[]
   userPermissions UserBranchPermission[]
+  procedures      Procedure[]
 
   @@index([organizationId])
+}
+
+model Procedure {
+  id                String   @id @default(cuid())
+  name              String
+  durationInMinutes Int
+  price             Decimal
+  organizationId    String
+  branchId          String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([branchId])
 }
 
 model Lead {
@@ -165,6 +183,7 @@ model Organization {
   branches            Branch[]
   leads               Lead[]
   appointments        Appointment[]
+  procedures          Procedure[]
 }
 
 model Subscription {
