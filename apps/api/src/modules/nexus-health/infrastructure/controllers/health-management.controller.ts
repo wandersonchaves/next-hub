@@ -4,7 +4,9 @@ import {
   Body,
   UseGuards,
   Headers,
+  Get,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ClerkGuard } from '../../../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../../../common/guards/branch-isolation.guard';
@@ -16,12 +18,19 @@ import { Role } from '@enterprise/database';
 import { CreateOperationalAppointmentUseCase, CreateOperationalAppointmentDto } from '../../application/use-cases/create-operational-appointment.use-case';
 import { CurrentOrg } from '../../../../common/decorators/org.decorator';
 
+@ApiTags('Nexus Health')
 @Controller('health-management')
 @UseGuards(ClerkGuard, MembershipGuard, RolesGuard, PermissionsGuard, BranchIsolationGuard)
 export class HealthManagementController {
   constructor(
     private readonly createAppointment: CreateOperationalAppointmentUseCase,
   ) {}
+
+  @Get('check')
+  @ApiOperation({ summary: 'Check module connectivity' })
+  async check() {
+    return { status: 'Nexus Health module is active' };
+  }
 
   @Post('appointments')
   @Roles(Role.ADMIN, Role.OWNER, Role.MEMBER)
