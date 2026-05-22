@@ -14,9 +14,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { NotificationsModule } from './notifications/notifications.module';
 
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
-
-import { AiModule } from './ai/ai.module';
+import { ProspectorModule } from './modules/prospector/prospector.module';
 
 import { AnalyticsModule } from './analytics/analytics.module';
 
@@ -31,18 +29,19 @@ import { PluginsModule } from './plugins/plugins.module';
 import { MarketplaceModule } from './marketplace/marketplace.module';
 
 import { validateEnv } from './common/config/env.validation';
-import { PrismaService } from './prisma/prisma.service';
+import { PrismaModule } from './prisma/prisma.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ 
+    PrismaModule,
+    ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
     }),
     OrganizationModule,
     BillingModule,
     NotificationsModule,
-    AiModule,
+    ProspectorModule,
     AnalyticsModule,
     TasksModule,
     WebhooksModule,
@@ -71,6 +70,6 @@ import { PrismaService } from './prisma/prisma.service';
     }),
   ],
   controllers: [AppController, HealthController],
-  providers: [AppService, PrismaService],
+  providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }
