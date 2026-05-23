@@ -19,7 +19,7 @@ export function useApi() {
       headers.set('Authorization', `Bearer ${token}`);
     }
 
-    if (orgId) {
+    if (orgId && !headers.has('x-organization-id')) {
       headers.set('x-organization-id', orgId);
     }
 
