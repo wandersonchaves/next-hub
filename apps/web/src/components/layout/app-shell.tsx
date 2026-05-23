@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { UserButton, OrganizationSwitcher } from "@clerk/nextjs";
+import { useTenantConfig, VerticalModule } from "@/hooks/use-tenant-config";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -29,19 +30,25 @@ interface AppShellProps {
 
 export function AppShell({ children, orgSlug }: AppShellProps) {
   const pathname = usePathname();
+  const { config, loading } = useTenantConfig();
 
   const navigation = [
-    { name: "Dashboard", href: `/${orgSlug}`, icon: LayoutDashboard },
-    { name: "Prospector", href: `/${orgSlug}/prospector`, icon: Zap },
-    { name: "Nexus Health", href: `/${orgSlug}/nexus-health`, icon: Heart },
-    { name: "Nexus Pet", href: `/${orgSlug}/nexus-pet`, icon: Dog },
-    { name: "IA Assistant", href: `/${orgSlug}/ai`, icon: Sparkles },
-    { name: "Documentos", href: `/${orgSlug}/documents`, icon: FileText },
-    { name: "Audit Logs", href: `/${orgSlug}/audit-logs`, icon: History },
-    { name: "Membros", href: `/${orgSlug}/organization`, icon: Users },
-    { name: "Assinatura", href: `/${orgSlug}/billing`, icon: CreditCard },
-    { name: "Configurações", href: `/${orgSlug}/settings`, icon: Settings },
+    { name: "Dashboard", href: `/${orgSlug}`, icon: LayoutDashboard, module: 'CORE' },
+    { name: "Prospector", href: `/${orgSlug}/prospector`, icon: Zap, module: 'PROSPECTOR' },
+    { name: "Nexus Health", href: `/${orgSlug}/nexus-health`, icon: Heart, module: 'HEALTH' },
+    { name: "Nexus Pet", href: `/${orgSlug}/nexus-pet`, icon: Dog, module: 'PET' },
+    { name: "IA Assistant", href: `/${orgSlug}/ai`, icon: Sparkles, module: 'CORE' },
+    { name: "Documentos", href: `/${orgSlug}/documents`, icon: FileText, module: 'CORE' },
+    { name: "Audit Logs", href: `/${orgSlug}/audit-logs`, icon: History, module: 'CORE' },
+    { name: "Membros", href: `/${orgSlug}/organization`, icon: Users, module: 'CORE' },
+    { name: "Assinatura", href: `/${orgSlug}/billing`, icon: CreditCard, module: 'CORE' },
+    { name: "Configurações", href: `/${orgSlug}/settings`, icon: Settings, module: 'CORE' },
   ];
+
+  const filteredNavigation = navigation.filter(item => {
+    if (item.module === 'CORE') return true;
+    return config?.activeModules.includes(item.module as VerticalModule);
+  });
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -65,7 +72,7 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
         </div>
         
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
-          {navigation.map((item) => {
+          {filteredNavigation.map((item) => {
             const isActive = pathname === item.href || (item.href !== `/${orgSlug}` && pathname.startsWith(item.href));
             return (
               <Link
@@ -138,7 +145,7 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
 
       {/* Bottom Nav - Mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-card border-t flex items-center justify-around px-2 z-50">
-        {navigation.slice(0, 4).map((item) => {
+        {filteredNavigation.slice(0, 4).map((item) => {
           const isActive = pathname === item.href;
           return (
             <Link
