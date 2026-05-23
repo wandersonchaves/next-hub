@@ -1,57 +1,80 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { IAIService, AIResponse } from '../../application/ports/ai-service.port';
 import { google } from '@ai-sdk/google';
-import { generateText, LanguageModel } from 'ai';
-import { IAIService } from '../../application/ports/prospector.ports';
+import { openai } from '@ai-sdk/openai';
+import { generateText } from 'ai';
 
 @Injectable()
 export class GeminiAIService implements IAIService {
-  private model: LanguageModel;
+  private readonly logger = new Logger(GeminiAIService.name);
 
-  constructor() {
-    this.model = google('gemini-1.5-pro-latest');
-  }
+  constructor(private readonly configService: ConfigService) {}
 
-  async analyzeMessage(message: string, context: { nicheContext: string; plansContext: string }): Promise<{
-    name?: string;
-    email?: string;
-    intent: string;
-    appointmentDate?: Date;
-  }> {
+  async generateResponse(message: string, context: string): Promise<AIResponse> {
+    const geminiKey = this.configService.get<string>('GOOGLE_GENERATIVE_AI_API_KEY');
+    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
+
     const prompt = `
-      Você é um assistente de triagem especializado em ${context.nicheContext}.
-      Contexto dos planos: ${context.plansContext}
-
-      Analise a seguinte mensagem recebida via chat e extraia:
-      1. Nome do contato (se fornecido).
-      2. Email do contato (se fornecido).
-      3. Intenção (SCHEDULE se quiser agendar, INFO se quiser saber mais, OTHER se for irrelevante).
-      4. Data e hora de agendamento (se for SCHEDULE e uma data for mencionada). Use o formato ISO.
-
-      Mensagem: "${message}"
-
-      Responda APENAS em formato JSON puro, sem blocos de código:
-      {
-        "name": "string | null",
-        "email": "string | null",
-        "intent": "SCHEDULE | INFO | OTHER",
-        "appointmentDate": "ISOString | null"
-      }
+      ${context}
+      
+      Usuário enviou: "${message}"
+      
+      Responda em formato JSON com os seguintes campos:
+      - content: a resposta para o WhatsApp (curta, informal).
+      - intent: 'GREETING', 'BOOKING', 'QUESTION', 'NEGATIVE', ou 'OTHER'.
+      - email: e-mail do usuário se mencionado.
+      - appointmentDate: data e hora ISO se o usuário confirmou um agendamento.
     `;
 
-    const { text } = await generateText({
-      model: this.model,
-      prompt,
-    });
-
     try {
-      const result = JSON.parse(text);
+      if (!geminiKey) throw new Error('Gemini API key missing');
+
+      const { text } = await generateText({
+        model: google('gemini-1.5-pro'),
+        prompt,
+      });
+
+      return this.parseResponse(text);
+    } catch (geminiError) {
+      this.logger.warn(`Gemini failed, trying GPT-4o: ${geminiError.message}`);
+
+      try {
+        if (!openaiKey) throw new Error('OpenAI API key missing');
+
+        const { text } = await generateText({
+          model: openai('gpt-4o'),
+          prompt,
+        });
+
+        return this.parseResponse(text);
+      } catch (openaiError) {
+        this.logger.error(`AI Fallback Error: ${openaiError.message}`);
+        return {
+          content: 'Oi! Como posso te ajudar?',
+          intent: 'GREETING',
+        };
+      }
+    }
+  }
+
+  private parseResponse(text: string): AIResponse {
+    try {
+      const cleanText = text.replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(cleanText);
+
       return {
-        ...result,
-        appointmentDate: result.appointmentDate ? new Date(result.appointmentDate) : undefined,
+        content: parsed.content,
+        intent: parsed.intent,
+        email: parsed.email,
+        appointmentDate: parsed.appointmentDate ? new Date(parsed.appointmentDate) : undefined,
       };
-    } catch (error) {
-      console.error('Failed to parse AI response:', text);
-      return { intent: 'OTHER' };
+    } catch (e) {
+      this.logger.error(`Failed to parse AI response: ${text}`);
+      return {
+        content: 'Entendido. Pode me falar mais?',
+        intent: 'OTHER',
+      };
     }
   }
 }
