@@ -2,6 +2,8 @@ import { Controller, Post, Body, UseGuards, Get, Headers, Param } from '@nestjs/
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
 import { ApproveLeadMessageUseCase } from './application/use-cases/approve-lead-message.use-case';
+import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sales-pitch.use-case';
+import { ApproveSuggestedMessageUseCase } from './application/use-cases/approve-suggested-message.use-case';
 import { ClerkGuard } from '../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../common/guards/branch-isolation.guard';
@@ -20,6 +22,8 @@ export class ProspectorController {
     private readonly handleIncomingMessageUseCase: HandleIncomingMessageUseCase,
     private readonly sourceLeadsUseCase: SourceLeadsUseCase,
     private readonly approveUseCase: ApproveLeadMessageUseCase,
+    private readonly generatePitchUseCase: GenerateSalesPitchUseCase,
+    private readonly approveSuggestedUseCase: ApproveSuggestedMessageUseCase,
   ) { }
 
   @Post('chat')
@@ -57,8 +61,35 @@ export class ProspectorController {
     });
   }
 
+  @Post('leads/:id/generate-pitch')
+  @ApiOperation({ summary: 'Generate AI sales pitch for a lead' })
+  async generatePitch(
+    @CurrentOrg() org: Organization,
+    @Param('id') id: string,
+  ) {
+    return this.generatePitchUseCase.execute({
+      leadId: id,
+      organizationId: org.id,
+    });
+  }
+
+  @Post('leads/:id/approve-message')
+  @ApiOperation({ summary: 'Approve and send suggested AI pitch' })
+  async approveMessage(
+    @CurrentOrg() org: Organization,
+    @Param('id') id: string,
+    @Body() body: { messageId: string; editedText?: string },
+  ) {
+    return this.approveSuggestedUseCase.execute({
+      leadId: id,
+      messageId: body.messageId,
+      editedText: body.editedText,
+      organizationId: org.id,
+    });
+  }
+
   @Post('leads/:id/approve')
-  @ApiOperation({ summary: 'Approve and send pending outreach message' })
+  @ApiOperation({ summary: 'Approve and send pending outreach message (Legacy)' })
   async approve(
     @CurrentOrg() org: Organization,
     @Param('id') id: string,

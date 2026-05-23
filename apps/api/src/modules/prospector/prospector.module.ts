@@ -5,13 +5,14 @@ import { WhatsAppWebhookController } from './infrastructure/controllers/whatsapp
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
 import { ApproveLeadMessageUseCase } from './application/use-cases/approve-lead-message.use-case';
+import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sales-pitch.use-case';
+import { ApproveSuggestedMessageUseCase } from './application/use-cases/approve-suggested-message.use-case';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
 import { EvolutionWhatsAppClient } from './infrastructure/adapters/evolution-whatsapp.client';
 import { GoogleMapsLeadSourceAdapter } from './infrastructure/adapters/google-maps-lead-source.adapter';
 import { WebSearchContactFinderAdapter } from './infrastructure/adapters/web-search-contact-finder.adapter';
 import { WhatsAppInboundProcessor } from './infrastructure/queue/whatsapp-inbound.processor';
-import { OrganizationModule } from '../../core/organization/organization.module';
 import { TenantContextModule } from '../../common/utils/tenant-context/tenant-context.module';
 
 @Module({
@@ -26,6 +27,8 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     HandleIncomingMessageUseCase,
     SourceLeadsUseCase,
     ApproveLeadMessageUseCase,
+    GenerateSalesPitchUseCase,
+    ApproveSuggestedMessageUseCase,
     WhatsAppInboundProcessor,
     {
       provide: 'ILeadRepository',
@@ -52,6 +55,12 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
       useClass: WebSearchContactFinderAdapter,
     },
   ],
-  exports: [HandleIncomingMessageUseCase, SourceLeadsUseCase, ApproveLeadMessageUseCase],
+  exports: [
+    HandleIncomingMessageUseCase, 
+    SourceLeadsUseCase, 
+    ApproveLeadMessageUseCase, 
+    GenerateSalesPitchUseCase, 
+    ApproveSuggestedMessageUseCase
+  ],
 })
 export class ProspectorModule { }
