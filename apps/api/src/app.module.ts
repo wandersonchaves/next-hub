@@ -34,6 +34,7 @@ import { MarketplaceModule } from './core/marketplace/marketplace.module';
 
 import { validateEnv } from './common/config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
+import { TenantContextModule } from './common/utils/tenant-context/tenant-context.module';
 import { ClerkGuard } from './common/guards/clerk.guard';
 import { MembershipGuard } from './common/guards/membership.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -43,6 +44,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
 @Module({
   imports: [
     PrismaModule,
+    TenantContextModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
