@@ -5,33 +5,33 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { ClerkGuard } from '../src/common/guards/clerk.guard';
 import { AIOrchestratorEngine } from '../src/common/engines/ai-orchestrator.engine';
+import { OmniChannelEngine } from '../src/common/engines/omni-channel.engine';
 import * as jwt from 'jsonwebtoken';
 
-describe('Nexus Health Clinical Intelligence (e2e)', () => {
+describe('Nexus Pet AI Reactivation (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let orgId: string;
   let branchId: string;
   let userId: string;
-  let patientId: string;
+  let petId: string;
   const jwtSecret = 'test-secret';
 
   const mockAI = {
     generate: jest.fn().mockResolvedValue({
-      content: 'Resumo de teste gerado por IA.',
-      extractedData: {
-        summary: 'Paciente com histórico estável.',
-        recommendedNextSteps: ['Continuar tratamento'],
-        riskLevel: 'LOW'
-      }
+      content: 'Oi! O Rex está precisando de um banho.',
     })
+  };
+
+  const mockOmni = {
+    sendMessage: jest.fn().mockResolvedValue(undefined)
   };
 
   const mockClerkGuard: CanActivate = {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const user = await prisma.client.user.findUnique({
-        where: { clerkId: 'health_user' },
+        where: { clerkId: 'pet_user' },
         include: { memberships: { include: { organization: true } } }
       });
       req['user'] = user;
@@ -47,6 +47,7 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
     })
       .overrideGuard(ClerkGuard).useValue(mockClerkGuard)
       .overrideProvider(AIOrchestratorEngine).useValue(mockAI)
+      .overrideProvider(OmniChannelEngine).useValue(mockOmni)
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -57,7 +58,7 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
 
     // Setup Data
     const org = await prisma.client.organization.create({
-      data: { name: 'Health Clinic', slug: 'health-clinic', clerkId: 'health_org' }
+      data: { name: 'Pet Shop', slug: 'pet-shop', clerkId: 'pet_org' }
     });
     orgId = org.id;
 
@@ -67,7 +68,7 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
     branchId = branch.id;
 
     const user = await prisma.client.user.create({
-      data: { email: 'doctor@health.com', clerkId: 'health_user' }
+      data: { email: 'groomer@pet.com', clerkId: 'pet_user' }
     });
     userId = user.id;
 
@@ -75,32 +76,29 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
       data: { userId, organizationId: orgId, role: 'ADMIN' }
     });
 
-    const patient = await prisma.client.lead.create({
-      data: { name: 'João Silva', phone: '11999999999', organizationId: orgId, branchId }
-    });
-    patientId = patient.id;
-
-    const procedure = await prisma.client.procedure.create({
-      data: { name: 'Botox', durationInMinutes: 30, price: 1200, organizationId: orgId, branchId }
+    const tutor = await prisma.client.lead.create({
+      data: { name: 'Dono do Rex', phone: '11988888888', organizationId: orgId, branchId }
     });
 
-    await prisma.client.appointment.create({
-      data: {
-        title: 'Aplicação de Botox',
-        startTime: new Date(),
-        endTime: new Date(),
-        leadId: patientId,
-        procedureId: procedure.id,
-        organizationId: orgId,
-        branchId,
-        status: 'COMPLETED'
+    // Create a pet with an old bath date (20 days ago)
+    const twentyDaysAgo = new Date();
+    twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+
+    const pet = await prisma.client.pet.create({
+      data: { 
+        name: 'Rex', 
+        breed: 'Poodle', 
+        tutorId: tutor.id, 
+        organizationId: orgId, 
+        branchId, 
+        lastBathAt: twentyDaysAgo 
       }
     });
+    petId = pet.id;
   });
 
   afterAll(async () => {
-    await prisma.client.appointment.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.procedure.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+    await prisma.client.pet.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
     await prisma.client.lead.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
     await prisma.client.member.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
     await prisma.client.branch.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
@@ -109,18 +107,20 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
     await app.close();
   });
 
-  it('should generate clinical summary for a patient (GET /patients/:id/summary)', async () => {
-    const token = jwt.sign({ sub: 'health_user', org_id: 'health_org' }, jwtSecret);
+  it('should trigger AI reactivation for overdue pets (GET /check-recurrence)', async () => {
+    const token = jwt.sign({ sub: 'pet_user', org_id: 'pet_org' }, jwtSecret);
 
     const response = await request(app.getHttpServer())
-      .get(`/health-management/patients/${patientId}/summary`)
+      .get(`/pet-management/check-recurrence`)
       .set('Authorization', `Bearer ${token}`)
       .set('x-branch-id', branchId)
       .set('x-organization-id', orgId);
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('summary');
-    expect(response.body).toHaveProperty('riskLevel', 'LOW');
     expect(mockAI.generate).toHaveBeenCalled();
+    expect(mockOmni.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      to: '11988888888',
+      text: expect.any(String)
+    }));
   });
 });

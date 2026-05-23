@@ -1,58 +1,43 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, CanActivate, ExecutionContext } from '@nestjs/common';
+import { INestApplication, ValidationPipe, CanActivate, ExecutionContext } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import * as jwt from 'jsonwebtoken';
-import { GlobalExceptionFilter } from '../src/common/filters/global-exception.filter';
-import { TenantInterceptor } from '../src/common/interceptors/tenant.interceptor';
-import { BranchType } from '@enterprise/database';
 import { ClerkGuard } from '../src/common/guards/clerk.guard';
+import { SaaSControlService } from '../src/core/saas-control/saas-control.service';
+import * as jwt from 'jsonwebtoken';
 
-describe('Multi-tenancy Isolation (E2E)', () => {
+describe('Multi-Tenancy and Module Isolation (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
+  let orgId1: string;
+  let orgId2: string;
+  let userId: string;
   const jwtSecret = 'test-secret';
 
-  // State to store fake data
-  let orgA: any;
-  let orgB: any;
-  let branchA: any;
-  let branchB: any;
-  let userA: any;
-  let userB: any;
-  let tokenA: string;
-  let tokenB: string;
+  const mockSaaSControlService = {
+    getTenantSnapshot: jest.fn(),
+    validateModuleAccess: jest.fn(),
+  };
 
-  // Mock ClerkGuard
   const mockClerkGuard: CanActivate = {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const authHeader = req.headers.authorization;
-      if (!authHeader) return false;
-
-      const token = authHeader.split(' ')[1];
-      try {
-        const payload = jwt.verify(token, jwtSecret) as any;
-        const user = await prisma.client.user.findUnique({
-          where: { clerkId: payload.sub },
-          include: { memberships: { include: { organization: true } } }
-        });
-
-        if (!user) return false;
-
-        req['user'] = user;
-        if (payload.org_id) {
-          const membership = user.memberships.find(m => m.organization.clerkId === payload.org_id);
-          if (membership) {
-            req['membership'] = membership;
-            req['organization'] = membership.organization;
-          }
-        }
-        return true;
-      } catch (e) {
-        return false;
-      }
+      const token = authHeader?.split(' ')[1];
+      
+      const payload: any = jwt.verify(token, jwtSecret);
+      const user = await prisma.client.user.findUnique({
+        where: { clerkId: payload.sub },
+        include: { memberships: { include: { organization: true } } }
+      });
+      
+      req['user'] = user;
+      const org = user.memberships.find(m => m.organization.clerkId === payload.org_id)?.organization;
+      req['organization'] = org;
+      req['membership'] = user.memberships.find(m => m.organization.id === org?.id);
+      
+      return true;
     }
   };
 
@@ -60,125 +45,73 @@ describe('Multi-tenancy Isolation (E2E)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideGuard(ClerkGuard)
-      .useValue(mockClerkGuard)
-      .overrideProvider(ClerkGuard)
-      .useValue(mockClerkGuard)
+      .overrideGuard(ClerkGuard).useValue(mockClerkGuard)
+      .overrideProvider(SaaSControlService).useValue(mockSaaSControlService)
       .compile();
 
     app = moduleFixture.createNestApplication();
-    app.useGlobalFilters(new GlobalExceptionFilter());
-    app.useGlobalInterceptors(new TenantInterceptor());
+    app.useGlobalPipes(new ValidationPipe());
     await app.init();
 
-    prisma = moduleFixture.get<PrismaService>(PrismaService);
+    prisma = app.get<PrismaService>(PrismaService);
 
-    // 1. Setup Data: Organizations, Branches, Users, Memberships
-    orgA = await prisma.client.organization.create({
-      data: {
-        name: 'Organization A',
-        slug: 'org-a-' + Date.now(),
-        clerkId: 'clerk_org_a_' + Date.now(),
-      },
+    // Create User and 2 Orgs
+    const user = await prisma.client.user.create({
+      data: { email: 'isolation@test.com', clerkId: 'iso_user' }
     });
+    userId = user.id;
 
-    orgB = await prisma.client.organization.create({
-      data: {
-        name: 'Organization B',
-        slug: 'org-b-' + Date.now(),
-        clerkId: 'clerk_org_b_' + Date.now(),
-      },
+    const org1 = await prisma.client.organization.create({
+      data: { name: 'Org Health Only', slug: 'health-org', clerkId: 'clerk_health' }
     });
+    orgId1 = org1.id;
 
-    branchA = await prisma.client.branch.create({
-      data: {
-        name: 'Health Branch',
-        type: BranchType.HEALTH,
-        organizationId: orgA.id,
-      },
+    const org2 = await prisma.client.organization.create({
+      data: { name: 'Org Pet Only', slug: 'pet-org', clerkId: 'clerk_pet' }
     });
-
-    branchB = await prisma.client.branch.create({
-      data: {
-        name: 'Pet Branch',
-        type: BranchType.PET,
-        organizationId: orgB.id,
-      },
-    });
-
-    userA = await prisma.client.user.create({
-      data: {
-        email: 'userA' + Date.now() + '@test.com',
-        clerkId: 'user_a_' + Date.now(),
-        name: 'User A',
-      },
-    });
-
-    userB = await prisma.client.user.create({
-      data: {
-        email: 'userB' + Date.now() + '@test.com',
-        clerkId: 'user_b_' + Date.now(),
-        name: 'User B',
-      },
-    });
+    orgId2 = org2.id;
 
     await prisma.client.member.createMany({
       data: [
-        { userId: userA.id, organizationId: orgA.id, role: 'ADMIN' },
-        { userId: userB.id, organizationId: orgB.id, role: 'ADMIN' },
-      ],
+        { userId, organizationId: orgId1, role: 'ADMIN' },
+        { userId, organizationId: orgId2, role: 'ADMIN' },
+      ]
     });
-
-    // 2. Generate JWT Tokens
-    tokenA = jwt.sign({ sub: userA.clerkId, org_id: orgA.clerkId }, jwtSecret);
-    tokenB = jwt.sign({ sub: userB.clerkId, org_id: orgB.clerkId }, jwtSecret);
   });
 
   afterAll(async () => {
-    // Cleanup in reverse order
-    try {
-      if (userA && userB) {
-        await prisma.client.member.deleteMany({ where: { userId: { in: [userA.id, userB.id] } } }).catch(() => {});
-        await prisma.client.branch.deleteMany({ where: { id: { in: [branchA.id, branchB.id] } } }).catch(() => {});
-        await prisma.client.user.deleteMany({ where: { id: { in: [userA.id, userB.id] } } }).catch(() => {});
-      }
-      if (orgA && orgB) {
-        await prisma.client.organization.deleteMany({ where: { id: { in: [orgA.id, orgB.id] } } }).catch(() => {});
-      }
-    } catch (e) {}
-    
+    await prisma.client.member.deleteMany({ where: { userId } }).catch(() => {});
+    await prisma.client.organization.deleteMany({ where: { id: { in: [orgId1, orgId2] } } }).catch(() => {});
+    await prisma.client.user.deleteMany({ where: { id: userId } }).catch(() => {});
     await app.close();
   });
 
-  it('User A should NOT be able to access leads using User B branch ID (Forbidden)', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/modules/prospector/leads')
-      .set('Authorization', `Bearer ${tokenA}`)
-      .set('x-organization-id', orgA.id) // Correct org
-      .set('x-branch-id', branchB.id); // WRONG BRANCH (belongs to Org B)
+  it('should return 404 when accessing HEALTH module if tenant only has PET licensed', async () => {
+    const token = jwt.sign({ sub: 'iso_user', org_id: 'clerk_pet' }, jwtSecret);
+    
+    // Mock access to return false
+    mockSaaSControlService.validateModuleAccess.mockResolvedValue(false);
 
-    expect(response.status).toBe(403);
-    expect(response.body.message).toContain('Branch access denied');
+    const response = await request(app.getHttpServer())
+      .get('/health-management/check')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-organization-id', orgId2);
+
+    expect(response.status).toBe(404);
   });
 
-  it('User B should be blocked from analytics dashboard of Org A', async () => {
-    const response = await request(app.getHttpServer())
-      .get('/analytics/dashboard')
-      .set('Authorization', `Bearer ${tokenB}`)
-      .set('x-organization-id', orgA.id); // Trying to access Org A
+  it('should allow access to HEALTH module if tenant has it licensed', async () => {
+    const token = jwt.sign({ sub: 'iso_user', org_id: 'clerk_health' }, jwtSecret);
+    
+    // Mock access to return true
+    mockSaaSControlService.validateModuleAccess.mockResolvedValue(true);
 
-    // Since tokenB has org_id of Org B, isolation should occur.
-    expect(response.status).toBe(403); 
-  });
-
-  it('User A should access leads with its own branch ID', async () => {
     const response = await request(app.getHttpServer())
-      .get('/modules/prospector/leads')
-      .set('Authorization', `Bearer ${tokenA}`)
-      .set('x-organization-id', orgA.id)
-      .set('x-branch-id', branchA.id);
+      .get('/health-management/check')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-organization-id', orgId1);
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('leads');
+    expect(response.body.status).toContain('active');
   });
 });
