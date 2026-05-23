@@ -35,16 +35,21 @@ import { MarketplaceModule } from './core/marketplace/marketplace.module';
 import { validateEnv } from './common/config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantContextModule } from './common/utils/tenant-context/tenant-context.module';
+import { EnginesModule } from './common/engines/engines.module';
+import { SaaSControlModule } from './core/saas-control/saas-control.module';
 import { ClerkGuard } from './common/guards/clerk.guard';
 import { MembershipGuard } from './common/guards/membership.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { BranchIsolationGuard } from './common/guards/branch-isolation.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
+import { ModuleAccessGuard } from './common/guards/module-access.guard';
 
 @Module({
   imports: [
     PrismaModule,
     TenantContextModule,
+    EnginesModule,
+    SaaSControlModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
@@ -91,6 +96,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     RolesGuard,
     BranchIsolationGuard,
     PermissionsGuard,
+    ModuleAccessGuard,
   ],
 })
 export class AppModule implements OnModuleDestroy {
