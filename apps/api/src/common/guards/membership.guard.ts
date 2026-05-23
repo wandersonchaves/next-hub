@@ -33,7 +33,11 @@ export class MembershipGuard implements CanActivate {
 
     // 1. If we have a headerOrgId, ensure user is a member of that specific organization
     if (headerOrgId) {
-      const membership = user.memberships?.find(m => m.organization.id === headerOrgId);
+      // Check both database ID and Clerk ID for compatibility
+      const membership = user.memberships?.find(
+        m => m.organization.id === headerOrgId || m.organization.clerkId === headerOrgId
+      );
+
       if (!membership) {
         throw new ForbiddenException('Access denied: You are not a member of this organization');
       }
