@@ -1,23 +1,56 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import type { IPetRepository } from '../ports/pet.repository';
+import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
+import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
+import { PrismaService } from '../../../../prisma/prisma.service';
 
 @Injectable()
 export class CheckPetRecurrenceUseCase {
+  private readonly logger = new Logger(CheckPetRecurrenceUseCase.name);
+
   constructor(
     @Inject('IPetRepository')
     private readonly petRepository: IPetRepository,
+    private readonly aiOrchestrator: AIOrchestratorEngine,
+    private readonly omniChannel: OmniChannelEngine,
+    private readonly prisma: PrismaService,
   ) {}
 
   async execute(branchId: string, limitDays: number = 12): Promise<void> {
+    this.logger.log(`Running pet recurrence check for branch ${branchId}`);
     const pets = await this.petRepository.findAllByBranch(branchId);
 
     for (const pet of pets) {
       const daysSinceLastBath = pet.getDaysSinceLastBath();
 
       if (daysSinceLastBath !== null && daysSinceLastBath > limitDays) {
-        // Disparar evento ou job para o Prospector
-        console.log(`Pet ${pet.name} (Tutor: ${pet.tutorId}) is overdue for a bath (${daysSinceLastBath} days). Triggering reactivation...`);
-        // TODO: Emitir evento para o BullMQ/Prospector
+        this.logger.log(`Pet ${pet.name} is overdue for a bath (${daysSinceLastBath} days). Generating AI reactivation...`);
+
+        // Fetch Tutor Phone (stored in Lead table)
+        const tutor = await this.prisma.client.lead.findUnique({
+          where: { id: pet.tutorId }
+        });
+
+        if (!tutor || !tutor.phone) continue;
+
+        // 1. AI Generation
+        const aiResponse = await this.aiOrchestrator.generate({
+          context: `
+            Você é um assistente de pet shop carinhoso. 
+            O pet "${pet.name}" (raça: ${pet.breed || 'não informada'}) não toma banho há ${daysSinceLastBath} dias.
+            O nome do tutor é "${tutor.name}".
+            Gere uma mensagem curta para o WhatsApp convidando para um novo banho, mencionando o bem-estar do pet.
+          `,
+          message: "Oi, como podemos convidar o tutor para um novo banho?"
+        });
+
+        // 2. Send via WhatsApp
+        await this.omniChannel.sendMessage({
+          to: tutor.phone,
+          text: aiResponse.content
+        });
+
+        this.logger.debug(`Reactivation sent to ${tutor.name} regarding ${pet.name}`);
       }
     }
   }

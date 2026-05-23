@@ -12,10 +12,12 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { ClerkGuard } from '../../../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../../../common/guards/branch-isolation.guard';
+import { ModuleAccessGuard } from '../../../../common/guards/module-access.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { PermissionsGuard } from '../../../../common/guards/permissions.guard';
 import { Roles } from '../../../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../../../common/decorators/permissions.decorator';
+import { RequireModule } from '../../../../common/decorators/module.decorator';
 import { Role } from '@enterprise/database';
 import { CurrentOrg } from '../../../../common/decorators/org.decorator';
 import type { IPetRepository } from '../../application/ports/pet.repository';
@@ -25,7 +27,8 @@ import { CheckPetRecurrenceUseCase } from '../../application/use-cases/check-pet
 
 @ApiTags('Nexus Pet')
 @Controller('pet-management')
-@UseGuards(ClerkGuard, MembershipGuard, RolesGuard, PermissionsGuard, BranchIsolationGuard)
+@RequireModule('PET')
+@UseGuards(ClerkGuard, MembershipGuard, RolesGuard, PermissionsGuard, BranchIsolationGuard, ModuleAccessGuard)
 export class PetManagementController {
   constructor(
     @Inject('IPetRepository')

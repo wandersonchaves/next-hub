@@ -5,7 +5,6 @@ import { PrismaPetRepository } from './infrastructure/adapters/prisma-pet.reposi
 import { OrganizationModule } from '../../core/organization/organization.module';
 
 @Module({
-  imports: [OrganizationModule],
   controllers: [PetManagementController],
   providers: [
     CheckPetRecurrenceUseCase,
