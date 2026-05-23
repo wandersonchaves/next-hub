@@ -63,6 +63,7 @@ model Procedure {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  appointments Appointment[]
 
   @@index([organizationId])
   @@index([branchId])
@@ -151,18 +152,21 @@ model Appointment {
   googleEventId  String?
   status         String   @default("SCHEDULED")
   leadId         String
+  procedureId    String?
   branchId       String
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  procedure    Procedure?   @relation(fields: [procedureId], references: [id], onDelete: SetNull)
   branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([branchId])
   @@index([leadId])
+  @@index([procedureId])
 }
 
 model UserBranchPermission {
