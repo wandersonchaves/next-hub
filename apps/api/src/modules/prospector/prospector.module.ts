@@ -15,7 +15,6 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
 
 @Module({
   imports: [
-    OrganizationModule,
     TenantContextModule,
     BullModule.registerQueue({
       name: 'whatsapp-inbound',

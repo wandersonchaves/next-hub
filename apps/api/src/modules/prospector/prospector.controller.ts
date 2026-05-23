@@ -4,13 +4,16 @@ import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-cas
 import { ClerkGuard } from '../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../common/guards/branch-isolation.guard';
+import { ModuleAccessGuard } from '../../common/guards/module-access.guard';
+import { RequireModule } from '../../common/decorators/module.decorator';
 import { CurrentOrg } from '../../common/decorators/org.decorator';
 import type { Organization } from '@enterprise/database';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Nexus Prospector')
 @Controller('modules/prospector')
-@UseGuards(ClerkGuard, MembershipGuard, BranchIsolationGuard)
+@RequireModule('PROSPECTOR')
+@UseGuards(ClerkGuard, MembershipGuard, BranchIsolationGuard, ModuleAccessGuard)
 export class ProspectorController {
   constructor(
     private readonly handleIncomingMessageUseCase: HandleIncomingMessageUseCase,
