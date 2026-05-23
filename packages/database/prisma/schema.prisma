@@ -129,6 +129,7 @@ model Lead {
   status            String   @default("NEW")
   score             Int      @default(0)
   industry          String?
+  pendingMessage    String?
   lastInteractionAt DateTime @default(now())
   branchId          String
   organizationId    String

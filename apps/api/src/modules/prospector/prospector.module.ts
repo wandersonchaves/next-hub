@@ -4,6 +4,7 @@ import { ProspectorController } from './prospector.controller';
 import { WhatsAppWebhookController } from './infrastructure/controllers/whatsapp-webhook.controller';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
+import { ApproveLeadMessageUseCase } from './application/use-cases/approve-lead-message.use-case';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
 import { EvolutionWhatsAppClient } from './infrastructure/adapters/evolution-whatsapp.client';
@@ -24,6 +25,7 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
   providers: [
     HandleIncomingMessageUseCase,
     SourceLeadsUseCase,
+    ApproveLeadMessageUseCase,
     WhatsAppInboundProcessor,
     {
       provide: 'ILeadRepository',
@@ -50,6 +52,6 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
       useClass: WebSearchContactFinderAdapter,
     },
   ],
-  exports: [HandleIncomingMessageUseCase, SourceLeadsUseCase],
+  exports: [HandleIncomingMessageUseCase, SourceLeadsUseCase, ApproveLeadMessageUseCase],
 })
 export class ProspectorModule { }

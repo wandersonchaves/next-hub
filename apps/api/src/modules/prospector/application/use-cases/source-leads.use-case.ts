@@ -2,7 +2,7 @@ import { Injectable, Inject, Logger, BadRequestException, NotFoundException } fr
 import { PrismaService } from '../../../../prisma/prisma.service';
 import type { ILeadSourceProvider, IContactFinder } from '../ports/lead-source.port';
 import type { IWhatsAppClient } from '../ports/whatsapp-client.port';
-import type { IAIService } from '../ports/ai-service.port';
+import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
 
 export interface SourceLeadsDto {
   sector: string;
@@ -19,8 +19,7 @@ export class SourceLeadsUseCase {
     private readonly prisma: PrismaService,
     @Inject('ILeadSourceProvider') private readonly sourceProvider: ILeadSourceProvider,
     @Inject('IContactFinder') private readonly contactFinder: IContactFinder,
-    @Inject('IAIService') private readonly aiService: IAIService,
-    @Inject('IWhatsAppClient') private readonly whatsappClient: IWhatsAppClient,
+    private readonly aiOrchestrator: AIOrchestratorEngine,
   ) {}
 
   async execute(dto: SourceLeadsDto): Promise<{ processed: number; errors: number }> {
@@ -67,10 +66,20 @@ export class SourceLeadsUseCase {
           continue;
         }
 
-        // Clean phone (keep only digits)
-        const cleanPhone = phone.replace(/\D/g, '');
+        // Normalização Cirúrgica: Garantir formato internacional (55)
+        const cleanPhone = this.normalizePhone(phone);
 
-        // 3. Persistence & Deduplication
+        // 3. Protocolo de Idempotência: Se já houver mensagem aguardando aprovação, não floodar.
+        const existingLead = await this.prisma.client.lead.findUnique({
+          where: { phone_organizationId: { phone: cleanPhone, organizationId } }
+        });
+
+        if (existingLead?.status === 'AWAITING_APPROVAL') {
+          this.logger.debug(`Lead ${cleanPhone} already awaiting approval. Skipping.`);
+          continue;
+        }
+
+        // 4. PERSISTENCE (UPSET) - Criamos o lead antes da IA para garantir integridade
         const lead = await this.prisma.client.lead.upsert({
           where: { phone_organizationId: { phone: cleanPhone, organizationId } },
           update: { industry: sector },
@@ -80,28 +89,43 @@ export class SourceLeadsUseCase {
             organizationId,
             branchId,
             industry: sector,
-            status: 'PROSPECTING',
+            status: 'NEW',
           }
         });
 
-        // 4. First AI Contact (The "Icebreaker")
-        const promptContext = `
-          SDR ICEBREAKER MODE:
-          Você é um SDR sênior abordando uma empresa descoberta via indicação regional.
-          CONTEXTO: Empresa "${item.name}", setor "${sector}", localizada em "${region}".
-          OBJETIVO: Iniciar uma conversa amigável, despertar curiosidade sobre como aumentamos o ROI de empresas similares e tentar agendar uma avaliação.
-          TOM: Profissional, mas informal, curto e sem cara de spam automático.
+        // 5. Advanced Sales Engineering (AIDA + SPIN)
+        const salesContext = `
+          VOCÊ É UM SDR SÊNIOR ESPECIALISTA EM GROWTH B2B.
+          OBJETIVO: Gerar uma mensagem de abordagem fria (Cold Outreach) via WhatsApp que gere CURIOSIDADE.
+          
+          REGRAS DE OURO:
+          - PROIBIDO usar "Como posso te ajudar?".
+          - PROIBIDO usar linguagem de suporte ou telemarketing.
+          - Use o framework AIDA (Atenção, Interesse, Desejo, Ação).
+          - Use SPIN Selling (Foque no Problema e na Implicação).
+          
+          Ganchos por Nicho:
+          - PET SHOP: Foque em horários vazios na agenda de banho ou perda de clientes recorrentes.
+          - ESTÉTICA: Foque em furos na agenda (no-show) e no valor vitalício do paciente (LTV).
+          - GERAL: Foque em eficiência operacional e ROI.
+          
+          ESTILO: Curto (máx 3 parágrafos curtos), sem emojis excessivos, tom profissional mas humano (quase informal).
+          TERMINAR SEMPRE com uma pergunta de resposta rápida (Ex: "Faz sentido batermos um papo de 5 min sobre isso?").
         `;
 
-        const icebreaker = await this.aiService.generateResponse(
-          "Olá, acabei de conhecer o trabalho de vocês e achei incrível.", 
-          promptContext
-        );
+        const aiResponse = await this.aiOrchestrator.generate({
+          context: salesContext,
+          message: `Empresa: "${item.name}", Setor: "${sector}", Região: "${region}". Gere o pitch de abertura.`
+        });
 
-        // 5. Dispatch to WhatsApp
-        await this.whatsappClient.sendMessage({
-          to: cleanPhone,
-          text: icebreaker.content,
+        // 6. COPILOT MODE: Salva para aprovação em vez de disparar
+        await this.prisma.client.lead.update({
+          where: { id: lead.id },
+          data: {
+            pendingMessage: aiResponse.content,
+            status: 'AWAITING_APPROVAL',
+            lastInteractionAt: new Date()
+          }
         });
 
         processedCount++;
@@ -112,5 +136,13 @@ export class SourceLeadsUseCase {
     }
 
     return { processed: processedCount, errors: errorCount };
+  }
+
+  private normalizePhone(phone: string): string {
+    let clean = phone.replace(/\D/g, '');
+    if (clean.length >= 10 && clean.length <= 11 && !clean.startsWith('55')) {
+      clean = `55${clean}`;
+    }
+    return clean;
   }
 }

@@ -1,6 +1,7 @@
-import { Controller, Post, Body, UseGuards, Get, Headers } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Headers, Param } from '@nestjs/common';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
+import { ApproveLeadMessageUseCase } from './application/use-cases/approve-lead-message.use-case';
 import { ClerkGuard } from '../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../common/guards/branch-isolation.guard';
@@ -18,6 +19,7 @@ export class ProspectorController {
   constructor(
     private readonly handleIncomingMessageUseCase: HandleIncomingMessageUseCase,
     private readonly sourceLeadsUseCase: SourceLeadsUseCase,
+    private readonly approveUseCase: ApproveLeadMessageUseCase,
   ) { }
 
   @Post('chat')
@@ -52,6 +54,20 @@ export class ProspectorController {
       region: body.region,
       organizationId: org.id,
       branchId,
+    });
+  }
+
+  @Post('leads/:id/approve')
+  @ApiOperation({ summary: 'Approve and send pending outreach message' })
+  async approve(
+    @CurrentOrg() org: Organization,
+    @Param('id') id: string,
+    @Body() body: { text?: string },
+  ) {
+    return this.approveUseCase.execute({
+      leadId: id,
+      approvedText: body.text,
+      organizationId: org.id,
     });
   }
 
