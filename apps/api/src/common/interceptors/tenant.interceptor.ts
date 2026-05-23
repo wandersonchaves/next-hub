@@ -11,7 +11,12 @@ import { tenantContext } from '@enterprise/database';
 export class TenantInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
     const request = context.switchToHttp().getRequest();
-    const organizationId = request.headers['x-organization-id'] || request.headers['organization-id'];
+    
+    // Prioritize the database ID resolved by Guards
+    const resolvedOrgId = request.organization?.id;
+    const headerOrgId = request.headers['x-organization-id'] || request.headers['organization-id'];
+    
+    const organizationId = resolvedOrgId || headerOrgId;
     const branchId = request.headers['x-branch-id'] || request.headers['branch-id'];
 
     if (organizationId) {
