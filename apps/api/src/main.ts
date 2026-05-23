@@ -1,11 +1,8 @@
-import * as dotenv from 'dotenv';
-import * as path from 'path';
-
-// Load .env from monorepo root at the very beginning
-dotenv.config({ path: path.join(process.cwd(), '../../.env') });
-// fallback if running from within apps/api
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+require('dotenv').config({ path: require('path').join(process.cwd(), '../../.env') });
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 if (!process.env.DATABASE_URL) {
-  dotenv.config({ path: path.join(__dirname, '../../../.env') });
+  require('dotenv').config({ path: require('path').join(__dirname, '../.env') });
 }
 
 import { NestFactory } from '@nestjs/core';

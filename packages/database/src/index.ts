@@ -22,7 +22,13 @@ import pg from 'pg'
 
 export const tenantContext = new AsyncLocalStorage<{ organizationId: string; branchId?: string }>()
 
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL })
+const databaseUrl = process.env.DATABASE_URL
+
+if (!databaseUrl && process.env.NODE_ENV !== 'test') {
+  console.warn('WARNING: DATABASE_URL is not defined. Database connection will fail.')
+}
+
+const pool = new pg.Pool(databaseUrl ? { connectionString: databaseUrl } : {})
 const adapter = new PrismaPg(pool)
 
 export async function disconnect() {
