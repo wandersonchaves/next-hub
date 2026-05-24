@@ -6,6 +6,7 @@ export class ProspectorLead {
     public readonly status: string,
     public readonly lastInteractionAt: Date,
     public readonly organizationId: string,
+    public readonly branchId: string,
   ) {}
 
   /**

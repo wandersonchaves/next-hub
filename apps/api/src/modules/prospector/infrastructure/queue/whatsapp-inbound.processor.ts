@@ -1,7 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
-import { HandleIncomingMessageUseCase } from '../../application/use-cases/handle-incoming-message.use-case';
+import { HandleIncomingMessageUseCase, IncomingMessageDto } from '../../application/use-cases/handle-incoming-message.use-case';
 import { TenantContextService } from '../../../../common/utils/tenant-context/tenant-context.service';
 
 @Processor('whatsapp-inbound')
@@ -18,27 +18,28 @@ export class WhatsAppInboundProcessor extends WorkerHost {
   async process(job: Job<any, any, string>): Promise<any> {
     const { data } = job;
 
-    // Extrair dados do webhook da Evolution API
-    const payload = {
-      externalId: data.key.id,
-      phone: data.key.remoteJid.split('@')[0],
-      text: data.message?.conversation || data.message?.extendedTextMessage?.text || '',
-      timestamp: new Date(data.messageTimestamp * 1000),
+    // The data is already cleaned and formatted by the Controller (Secretary Mode)
+    const dto: IncomingMessageDto = {
+      leadId: data.leadId,
+      externalId: data.externalId,
+      phone: data.phone,
+      text: data.text,
+      timestamp: data.timestamp,
       organizationId: data.organizationId,
       branchId: data.branchId,
     };
 
-    if (!payload.text) {
-      this.logger.debug(`Empty message received from ${payload.phone}. Skipping.`);
+    if (!dto.text) {
+      this.logger.debug(`Empty message ${dto.externalId} received. Skipping.`);
       return;
     }
 
-    this.logger.log(`Processing WhatsApp message ${payload.externalId} from ${payload.phone}`);
+    this.logger.log(`Worker: Processing message ${dto.externalId} from ${dto.phone}`);
 
-    // Executar Caso de Uso dentro do contexto Multi-tenant
+    // Execute Use Case within Multi-tenant Context
     return this.tenantContext.run(
-      { organizationId: payload.organizationId, branchId: payload.branchId },
-      () => this.handleIncomingMessage.execute(payload),
+      { organizationId: dto.organizationId, branchId: dto.branchId },
+      () => this.handleIncomingMessage.execute(dto),
     );
   }
 }

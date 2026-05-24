@@ -1,17 +1,26 @@
-import { Injectable, Inject, Logger } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { IWhatsAppClient } from '../ports/whatsapp-client.port';
-import type { IAIService } from '../ports/ai-service.port';
-import { ProspectorLead } from '../../domain/entities/prospector-lead.entity';
-import { TenantContextService } from '../../../../common/utils/tenant-context/tenant-context.service';
+import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
+import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
+import { BusinessClockEngine } from '../../../../common/engines/business-clock.engine';
+import { SDRConfigEngine } from '../../infrastructure/sdr-config.engine';
+import { GoogleCalendarService } from '../../infrastructure/google-calendar.service';
 
 export interface IncomingMessageDto {
+  leadId: string;
   externalId: string;
   phone: string;
   text: string;
-  timestamp: Date;
+  timestamp: number; // Unix timestamp
   organizationId: string;
   branchId: string;
+}
+
+interface ExtractionResult {
+  intent: 'GREETING' | 'BOOKING' | 'QUESTION' | 'NEGATIVE' | 'OTHER';
+  email?: string;
+  appointmentDate?: string; // ISO String
+  leadName?: string;
 }
 
 @Injectable()
@@ -20,130 +29,205 @@ export class HandleIncomingMessageUseCase {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject('IWhatsAppClient') private readonly whatsappClient: IWhatsAppClient,
-    @Inject('IAIService') private readonly aiService: IAIService,
-    private readonly tenantContext: TenantContextService,
+    private readonly aiOrchestrator: AIOrchestratorEngine,
+    private readonly omniChannel: OmniChannelEngine,
+    private readonly businessClock: BusinessClockEngine,
+    private readonly sdrConfig: SDRConfigEngine,
+    private readonly googleCalendar: GoogleCalendarService,
   ) {}
 
   async execute(dto: IncomingMessageDto): Promise<void> {
-    const { externalId, phone, text, timestamp, organizationId, branchId } = dto;
+    const { leadId, externalId, phone, text, timestamp, organizationId, branchId } = dto;
+    const messageDate = new Date(timestamp * 1000);
 
-    // 1. Deduplicação Atômica e Temporal Guard
     try {
-      await this.prisma.client.$transaction(async (tx) => {
-        // Verifica se a mensagem já foi processada
-        const alreadyProcessed = await tx.auditLog.findFirst({
-          where: { 
-            action: 'WHATSAPP_INBOUND_PROCESSED',
-            metadata: { path: ['externalId'], equals: externalId } as any
+      // 1. Fetch Lead context with last 20 interactions for AI context
+      const lead = await this.prisma.client.lead.findUnique({
+        where: { id: leadId },
+        include: {
+          interactions: {
+            orderBy: { createdAt: 'desc' },
+            take: 20
           }
-        });
-
-        if (alreadyProcessed) {
-          this.logger.warn(`Message ${externalId} already processed. Skipping.`);
-          return;
         }
+      });
 
-        // Busca ou cria o Lead
-        let leadData = await tx.lead.findUnique({
-          where: { phone_organizationId: { phone, organizationId } }
-        });
+      if (!lead) {
+        this.logger.error(`Worker Error: Lead ${leadId} not found in database.`);
+        return;
+      }
 
-        if (!leadData) {
-          leadData = await tx.lead.create({
+      // 2. Extraction Phase (IA + Regex)
+      // The interaction is already saved in the controller, so we just use it for context.
+      const extractionContext = `
+        VOCÊ É UM ANALISTA DE TRIAGEM SDR. Sua missão é extrair dados de uma mensagem do WhatsApp.
+        HISTÓRICO RECENTE: ${lead.interactions.map(i => `${i.type}: ${i.content}`).join(' | ')}
+      `;
+
+      const extraction = await this.aiOrchestrator.generate<ExtractionResult>({
+        context: extractionContext,
+        message: text,
+        expectedFormat: `
+          {
+            "intent": "GREETING | BOOKING | QUESTION | NEGATIVE | OTHER",
+            "email": "string ou null",
+            "appointmentDate": "ISO8601 string ou null",
+            "leadName": "string ou null"
+          }
+        `
+      });
+
+      const data = extraction.extractedData || { intent: 'OTHER' };
+      const extractedEmail = data.email || this.regexExtractEmail(text);
+      const extractedDate = data.appointmentDate ? new Date(data.appointmentDate) : null;
+
+      // 3. Atomic State Machine (Transaction)
+      let systemStatus = 'INTERACTION_RECEIVED';
+      
+      await this.prisma.client.$transaction(async (tx) => {
+        // Determine Logic
+        if (extractedEmail && extractedDate) {
+          systemStatus = 'AGENDAMENTO_REALIZADO_COM_SUCESSO';
+          
+          const googleEventId = await this.googleCalendar.createEvent({
+            title: `Prospector: ${lead.name}`,
+            startTime: extractedDate,
+            endTime: new Date(extractedDate.getTime() + 30 * 60000),
+            attendeeEmail: extractedEmail
+          });
+
+          await tx.appointment.create({
             data: {
-              phone,
-              organizationId,
+              title: `Agendamento Nexus: ${lead.name}`,
+              startTime: extractedDate,
+              endTime: new Date(extractedDate.getTime() + 30 * 60000),
+              leadId: lead.id,
               branchId,
-              name: 'Novo Lead',
-              status: 'NEW',
+              organizationId,
+              status: 'SCHEDULED',
+              googleEventId
             }
+          });
+          
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: { status: 'CONVERTED', email: extractedEmail }
+          });
+        } else if (extractedDate) {
+          systemStatus = 'DATA_CONFIRMADA_AGUARDANDO_EMAIL';
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: { status: 'BOOKING_IN_PROGRESS' }
+          });
+        } else if (extractedEmail) {
+          systemStatus = 'EMAIL_CAPTURADO';
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: { email: extractedEmail, status: 'QUALIFIED' }
+          });
+        } else if (data.intent === 'NEGATIVE') {
+          systemStatus = 'RECUSA_DETECTADA';
+          await tx.lead.update({
+            where: { id: lead.id },
+            data: { status: 'NEGATIVE' }
           });
         }
 
-        const lead = new ProspectorLead(
-          leadData.id,
-          leadData.name,
-          leadData.phone,
-          leadData.status,
-          leadData.lastInteractionAt,
-          leadData.organizationId,
-        );
-
-        if (lead.isStale(timestamp)) {
-          this.logger.warn(`Stale message received for lead ${lead.id}. Skipping.`);
-          return;
+        // Update name if AI found one
+        if (data.leadName && (lead.name === 'Lead Novo' || lead.name === 'Novo Lead')) {
+           await tx.lead.update({
+             where: { id: lead.id },
+             data: { name: data.leadName }
+           });
         }
+      });
 
-        // 2. Chamada à IA com SDR Matrix
-        const context = `
-          DIRETRIZES SDR SÊNIOR:
-          1. BLOQUEIO DE DUPLO AGENDAMENTO: Se já houver agendamento, confirme o existente.
-          2. TRATAMENTO DE NEGATIVAS: Seja empático e tente reverter uma vez.
-          3. ACEITE IMEDIATO: Se o cliente quiser agendar, peça e-mail se não tiver.
-          4. UPSELL MULTI-UNIDADES: Mencione benefícios de outras filiais se relevante.
-          5. ANCORAGEM DE ROI: Foque no benefício do tratamento/procedimento.
-          6. INFRAESTRUTURA DE TEXTO: Respostas curtas, informais (sem emojis excessivos), simule digitação humana.
-        `;
+      // 4. SDR Voicing (Generation)
+      const isBusinessHours = this.businessClock.isBusinessHours();
+      const nicheContext = this.sdrConfig.getNicheContext(lead.industry);
+      const plansContext = this.sdrConfig.getPlansContext();
+      
+      const salesContext = `
+        VOCÊ É UM SDR SÊNIOR ESPECIALISTA EM GROWTH B2B. Sua voz é humana, curta e persuasiva.
+        
+        SITUAÇÃO ATUAL DO SISTEMA: ${systemStatus}
+        CONTEXTO DO NICHO: ${nicheContext}
+        TABELA DE PREÇOS: ${plansContext}
+        
+        AS 6 LEIS DO SDR:
+        1. Nunca peça para agendar se o status for CONVERTED ou BOOKING_IN_PROGRESS.
+        2. Nunca envie textos longos (máximo 3 frases).
+        3. Nunca repita estruturas sintáticas do histórico recente.
+        4. Despeça-se educadamente em caso de RECUSA_DETECTADA.
+        5. Nunca use "Como posso te ajudar?".
+        6. Se fora de horário (ATUAL: ${isBusinessHours ? 'SIM' : 'NÃO'}), avise que amanhã cedo dará continuidade.
+      `;
 
-        const aiResponse = await this.aiService.generateResponse(text, context);
+      const outreach = await this.aiOrchestrator.generate({
+        context: salesContext,
+        message: text,
+        history: lead.interactions.map(i => ({ 
+          role: i.type === 'INBOUND' ? 'user' : 'assistant', 
+          content: i.content 
+        }))
+      });
 
-        // 3. Hibridismo IA + Regex para Extração
-        const extractedEmail = aiResponse.email || this.extractEmail(text);
-        const extractedDate = aiResponse.appointmentDate;
+      // 5. Dispatch and Register Output
+      // COPILOT MODE: Se não for QUALIFIED/CONVERTED ou for fora de horário, manda para aprovação
+      const needsApproval = !isBusinessHours || (lead.status !== 'QUALIFIED' && lead.status !== 'CONVERTED');
 
-        // 4. Persistência Atômica
-        await tx.lead.update({
-          where: { id: lead.id },
-          data: {
-            email: extractedEmail || leadData.email,
-            lastInteractionAt: timestamp,
-            status: aiResponse.intent === 'BOOKING' ? 'QUALIFIED' : leadData.status,
-          }
-        });
-
-        if (aiResponse.intent === 'BOOKING' && extractedDate) {
-          await tx.appointment.create({
+      if (needsApproval) {
+        await this.prisma.client.$transaction([
+          this.prisma.client.suggestedMessage.create({
             data: {
-              title: `Nexus Prospector: Agendamento IA`,
-              startTime: extractedDate,
-              endTime: new Date(extractedDate.getTime() + 30 * 60000), // Default 30 min
+              content: outreach.content,
+              status: 'PENDING_APPROVAL',
               leadId: lead.id,
               branchId,
               organizationId,
             }
-          });
-        }
-
-        // Registrar processamento para deduplicação
-        await tx.auditLog.create({
-          data: {
-            action: 'WHATSAPP_INBOUND_PROCESSED',
-            entity: 'Lead',
-            entityId: lead.id,
-            userId: 'SYSTEM',
-            organizationId,
-            metadata: { externalId, text, aiIntent: aiResponse.intent }
-          }
-        });
-
-        // 5. Enviar Resposta via WhatsApp
-        await this.whatsappClient.sendMessage({
+          }),
+          this.prisma.client.lead.update({
+            where: { id: lead.id },
+            data: { 
+              status: 'AWAITING_APPROVAL',
+              pendingMessage: outreach.content,
+              lastInteractionAt: new Date() // Use current date for the response lock
+            }
+          })
+        ]);
+        this.logger.log(`Worker: Response for ${phone} queued for human approval.`);
+      } else {
+        await this.omniChannel.sendMessage({
           to: phone,
-          text: aiResponse.content,
+          text: outreach.content,
         });
-      });
-    } catch (error) {
-      if (error.code === 'P2002') {
-        this.logger.warn(`Concurrency conflict for message ${externalId}. Skipping.`);
-        return;
+
+        await this.prisma.client.$transaction([
+          this.prisma.client.interaction.create({
+            data: {
+              content: outreach.content,
+              type: 'OUTBOUND',
+              leadId: lead.id,
+              branchId,
+              organizationId,
+            }
+          }),
+          this.prisma.client.lead.update({
+            where: { id: lead.id },
+            data: { lastInteractionAt: new Date() }
+          })
+        ]);
+        this.logger.debug(`Worker: Direct SDR reply sent to ${phone}`);
       }
-      this.logger.error(`Error processing incoming message: ${error.message}`, error.stack);
+
+    } catch (error) {
+      this.logger.error(`Worker: Failed to process message ${externalId}: ${error.message}`, error.stack);
       throw error;
     }
   }
 
-  private extractEmail(text: string): string | null {
+  private regexExtractEmail(text: string): string | null {
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     const match = text.match(emailRegex);
     return match ? match[0] : null;

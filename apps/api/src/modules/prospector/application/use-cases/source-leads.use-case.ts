@@ -3,6 +3,9 @@ import { PrismaService } from '../../../../prisma/prisma.service';
 import type { ILeadSourceProvider, IContactFinder } from '../ports/lead-source.port';
 import type { IWhatsAppClient } from '../ports/whatsapp-client.port';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
+import { normalizePhone } from '../../../../common/utils/phone-normalization';
+import { normalizeIndustry } from '../../../../common/utils/industry-normalization';
+import { BusinessClockEngine } from '../../../../common/engines/business-clock.engine';
 
 export interface SourceLeadsDto {
   sector: string;
@@ -20,14 +23,24 @@ export class SourceLeadsUseCase {
     @Inject('ILeadSourceProvider') private readonly sourceProvider: ILeadSourceProvider,
     @Inject('IContactFinder') private readonly contactFinder: IContactFinder,
     private readonly aiOrchestrator: AIOrchestratorEngine,
+    private readonly businessClock: BusinessClockEngine,
   ) {}
 
   async execute(dto: SourceLeadsDto): Promise<{ processed: number; errors: number }> {
     const { sector, region, organizationId } = dto;
     let { branchId } = dto;
-    this.logger.log(`Starting proactive prospecting for ${sector} in ${region}`);
 
-    // Ensure we have a branchId (fallback or auto-create)
+    // Normalização Cirúrgica do Setor (Consolida Clínica de Estética, etc)
+    const normalizedSector = normalizeIndustry(sector);
+
+    const isBusinessHours = this.businessClock.isBusinessHours();
+    if (!isBusinessHours) {
+      this.logger.warn(`Proactive Prospecting triggered outside business hours. Leads will be generated and queued for approval.`);
+    }
+
+    this.logger.log(`Starting proactive prospecting for ${normalizedSector} in ${region}`);
+
+    // Ensure we have a branchId
     if (!branchId) {
       let firstBranch = await this.prisma.client.branch.findFirst({
         where: { organizationId }
@@ -43,11 +56,10 @@ export class SourceLeadsUseCase {
         });
       }
       branchId = firstBranch.id;
-      this.logger.debug(`Using branch ${branchId} for prospecting`);
     }
 
     // 1. Discovery via Google Maps
-    const discovered = await this.sourceProvider.searchCompanies(sector, region);
+    const discovered = await this.sourceProvider.searchCompanies(normalizedSector, region);
     let processedCount = 0;
     let errorCount = 0;
 
@@ -55,70 +67,60 @@ export class SourceLeadsUseCase {
       try {
         let phone = item.phone;
 
-        // 2. Enrichment: If phone is missing, search web/website
+        // 2. Enrichment
         if (!phone) {
           const foundPhone = await this.contactFinder.findMissingPhone(item.name, item.website);
           if (foundPhone) phone = foundPhone;
         }
 
-        if (!phone) {
-          this.logger.debug(`Could not find phone for ${item.name}. Skipping.`);
-          continue;
-        }
+        if (!phone) continue;
 
-        // Normalização Cirúrgica: Garantir formato internacional (55)
-        const cleanPhone = this.normalizePhone(phone);
+        const cleanPhone = normalizePhone(phone);
 
-        // 3. Protocolo de Idempotência: Se já houver mensagem aguardando aprovação, não floodar.
+        // 3. Idempotency Check
         const existingLead = await this.prisma.client.lead.findUnique({
           where: { phone_organizationId: { phone: cleanPhone, organizationId } }
         });
 
-        if (existingLead?.status === 'AWAITING_APPROVAL') {
-          this.logger.debug(`Lead ${cleanPhone} already awaiting approval. Skipping.`);
-          continue;
-        }
+        if (existingLead?.status === 'AWAITING_APPROVAL') continue;
 
-        // 4. PERSISTENCE (UPSET) - Criamos o lead antes da IA para garantir integridade
+        // 4. PERSISTENCE (UPSET)
         const lead = await this.prisma.client.lead.upsert({
           where: { phone_organizationId: { phone: cleanPhone, organizationId } },
-          update: { industry: sector },
+          update: { industry: normalizedSector },
           create: {
             name: item.name,
             phone: cleanPhone,
             organizationId,
             branchId,
-            industry: sector,
+            industry: normalizedSector,
             status: 'NEW',
           }
         });
 
-        // 5. Advanced Sales Engineering (AIDA + SPIN)
+        // 5. Advanced Sales Engineering
         const salesContext = `
           VOCÊ É UM SDR SÊNIOR ESPECIALISTA EM GROWTH B2B.
-          OBJETIVO: Gerar uma mensagem de abordagem fria (Cold Outreach) via WhatsApp que gere CURIOSIDADE.
+          OBJETIVO: Gerar uma abordagem fria (Cold Outreach) via WhatsApp altamente persuasiva.
           
-          REGRAS DE OURO:
-          - PROIBIDO usar "Como posso te ajudar?".
-          - PROIBIDO usar linguagem de suporte ou telemarketing.
-          - Use o framework AIDA (Atenção, Interesse, Desejo, Ação).
-          - Use SPIN Selling (Foque no Problema e na Implicação).
+          ESTRUTURA: AIDA + SPIN Selling.
+          PROIBIDO: "Como posso te ajudar?", "Sou da empresa X".
           
-          Ganchos por Nicho:
-          - PET SHOP: Foque em horários vazios na agenda de banho ou perda de clientes recorrentes.
-          - ESTÉTICA: Foque em furos na agenda (no-show) e no valor vitalício do paciente (LTV).
-          - GERAL: Foque em eficiência operacional e ROI.
+          CONTEXTO:
+          - Empresa: "${item.name}"
+          - Setor: "${normalizedSector}"
+          - Região: "${region}"
           
-          ESTILO: Curto (máx 3 parágrafos curtos), sem emojis excessivos, tom profissional mas humano (quase informal).
-          TERMINAR SEMPRE com uma pergunta de resposta rápida (Ex: "Faz sentido batermos um papo de 5 min sobre isso?").
+          ESTILO: Curto, humano, focado na dor do nicho (Estética: no-show, Pet: ociosidade).
+          TERMINAR com uma pergunta de resposta rápida.
         `;
 
         const aiResponse = await this.aiOrchestrator.generate({
           context: salesContext,
-          message: `Empresa: "${item.name}", Setor: "${sector}", Região: "${region}". Gere o pitch de abertura.`
+          message: `Gere o pitch ideal para o lead "${item.name}".`
         });
 
-        // 6. COPILOT MODE: Salva para aprovação em vez de disparar
+        // 6. COPILOT MODE
         await this.prisma.client.lead.update({
           where: { id: lead.id },
           data: {
@@ -136,13 +138,5 @@ export class SourceLeadsUseCase {
     }
 
     return { processed: processedCount, errors: errorCount };
-  }
-
-  private normalizePhone(phone: string): string {
-    let clean = phone.replace(/\D/g, '');
-    if (clean.length >= 10 && clean.length <= 11 && !clean.startsWith('55')) {
-      clean = `55${clean}`;
-    }
-    return clean;
   }
 }

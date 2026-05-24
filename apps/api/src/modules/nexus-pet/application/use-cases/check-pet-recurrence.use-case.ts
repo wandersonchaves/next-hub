@@ -3,6 +3,7 @@ import type { IPetRepository } from '../ports/pet.repository';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
 import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
 import { PrismaService } from '../../../../prisma/prisma.service';
+import { BusinessClockEngine } from '../../../../common/engines/business-clock.engine';
 
 @Injectable()
 export class CheckPetRecurrenceUseCase {
@@ -14,9 +15,17 @@ export class CheckPetRecurrenceUseCase {
     private readonly aiOrchestrator: AIOrchestratorEngine,
     private readonly omniChannel: OmniChannelEngine,
     private readonly prisma: PrismaService,
+    private readonly businessClock: BusinessClockEngine,
   ) {}
 
   async execute(branchId: string, limitDays: number = 12): Promise<void> {
+    const isBusinessHours = this.businessClock.isBusinessHours();
+    
+    if (!isBusinessHours) {
+      this.logger.log(`Automatic Pet Reactivation skipped: Outside business hours.`);
+      return;
+    }
+
     this.logger.log(`Running pet recurrence check for branch ${branchId}`);
     const pets = await this.petRepository.findAllByBranch(branchId);
 
@@ -26,7 +35,7 @@ export class CheckPetRecurrenceUseCase {
       if (daysSinceLastBath !== null && daysSinceLastBath > limitDays) {
         this.logger.log(`Pet ${pet.name} is overdue for a bath (${daysSinceLastBath} days). Generating AI reactivation...`);
 
-        // Fetch Tutor Phone (stored in Lead table)
+        // Fetch Tutor Phone
         const tutor = await this.prisma.client.lead.findUnique({
           where: { id: pet.tutorId }
         });
@@ -40,11 +49,12 @@ export class CheckPetRecurrenceUseCase {
             O pet "${pet.name}" (raça: ${pet.breed || 'não informada'}) não toma banho há ${daysSinceLastBath} dias.
             O nome do tutor é "${tutor.name}".
             Gere uma mensagem curta para o WhatsApp convidando para um novo banho, mencionando o bem-estar do pet.
+            PROIBIDO: Usar saudações genéricas como "Como posso te ajudar?".
           `,
           message: "Oi, como podemos convidar o tutor para um novo banho?"
         });
 
-        // 2. Send via WhatsApp
+        // 2. Send via WhatsApp (Proactive reactivation is automatic but gated by hours)
         await this.omniChannel.sendMessage({
           to: tutor.phone,
           text: aiResponse.content

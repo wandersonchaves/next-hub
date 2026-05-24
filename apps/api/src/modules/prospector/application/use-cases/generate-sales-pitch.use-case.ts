@@ -7,6 +7,16 @@ export interface GeneratePitchDto {
   organizationId: string;
 }
 
+interface AIAnalysisResult {
+  suggestion: string;
+  extractedData: {
+    name?: string;
+    email?: string;
+    industry?: string;
+    intent?: string;
+  }
+}
+
 @Injectable()
 export class GenerateSalesPitchUseCase {
   private readonly logger = new Logger(GenerateSalesPitchUseCase.name);
@@ -16,73 +26,85 @@ export class GenerateSalesPitchUseCase {
     private readonly aiOrchestrator: AIOrchestratorEngine,
   ) {}
 
-  async execute(dto: GeneratePitchDto): Promise<{ suggestedMessageId: string; content: string }> {
+  async execute(dto: GeneratePitchDto): Promise<{ suggestion: string }> {
     const { leadId, organizationId } = dto;
 
-    // 1. Fetch Lead context
+    // 1. Fetch Lead and History for context
     const lead = await this.prisma.client.lead.findUnique({
       where: { id: leadId },
-    });
-
-    if (!lead || lead.organizationId !== organizationId) {
-      throw new Error('Lead não encontrado ou acesso negado.');
-    }
-
-    // 2. Advanced Sales Engineering Prompt (Neurosales + SPIN + Pattern Interruption)
-    const salesContext = `
-      ATUE COMO UM CONSULTOR DE NEGÓCIOS E SDR SÊNIOR ESPECIALISTA EM GROWTH B2B.
-      
-      OBJETIVO: Criar uma abordagem de prospecção fria via WhatsApp altamente persuasiva e personalizada.
-      
-      ESTRUTURA OBRIGATÓRIA (Técnicas):
-      1. QUEBRA DE PADRÃO (Pattern Interruption): Inicie de forma que não pareça um robô ou vendedor chato.
-      2. SPIN SELLING: Foque no Problema (P) e na Implicação (I).
-      3. PROIBIDO: "Como posso te ajudar?", "Sou da empresa X", "Gostaria de apresentar...".
-      
-      CONTEXTO DO LEAD:
-      - Empresa/Nome: ${lead.name}
-      - Setor: ${lead.industry || 'B2B'}
-      - Região: Teresina (usar ganchos regionais se fizer sentido, mas manter profissionalismo)
-      
-      DIRETRIZES POR NICHO:
-      - CLÍNICA DE ESTÉTICA: Foque em salas vazias em horários de pico ou perda de LTV (pacientes que não voltam).
-      - PET SHOP: Foque em ociosidade na equipe de banho e tosa ou concorrência com grandes redes.
-      
-      ESTILO DE ESCRITA:
-      - Máximo 3 parágrafos curtos.
-      - Sem jargão técnico de marketing.
-      - Tom profissional, porém quase informal (como um parceiro de negócios falaria).
-      - TERMINAR SEMPRE com uma pergunta aberta e assertiva que instigue resposta.
-    `;
-
-    const aiRequest = {
-      context: salesContext,
-      message: `Gere o pitch de abertura ideal para o lead "${lead.name}" do setor "${lead.industry}".`,
-    };
-
-    // 3. AI Inference
-    const aiResponse = await this.aiOrchestrator.generate(aiRequest);
-
-    // 4. Persistence as PENDING_APPROVAL
-    const suggested = await this.prisma.client.suggestedMessage.create({
-      data: {
-        content: aiResponse.content,
-        status: 'PENDING_APPROVAL',
-        leadId: lead.id,
+      include: {
+        interactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 15
+        }
       }
     });
 
-    // Update lead status to indicate it was processed by AI but not yet sent
-    await this.prisma.client.lead.update({
-      where: { id: leadId },
-      data: { status: 'AWAITING_APPROVAL' }
+    if (!lead || lead.organizationId !== organizationId) {
+      throw new Error('Lead não encontrado.');
+    }
+
+    // 2. Advanced SDR Prompt (Copilot Mode)
+    const salesContext = `
+      VOCÊ É UM SDR SÊNIOR ATUANDO COMO COPILOTO DE VENDAS.
+      Sua missão é ler o histórico e sugerir a MELHOR próxima resposta para o usuário humano enviar.
+      
+      ESTRATÉGIA:
+      - Use SPIN Selling e Framework AIDA.
+      - PROIBIDO: "Como posso te ajudar?", "O que você deseja?".
+      - FOCO: Gerar curiosidade, tocar na dor do nicho e levar para o fechamento/agendamento.
+      - Se o lead já passou dados, use-os. Se não, tente capturar sutilmente.
+      
+      CONTEXTO DO LEAD:
+      - Nome: ${lead.name}
+      - Indústria: ${lead.industry || 'B2B'}
+      - Status Atual: ${lead.status}
+      
+      INSTRUÇÃO ADICIONAL: Analise a conversa e extraia qualquer dado novo (nome real, e-mail, interesse específico).
+    `;
+
+    const history = lead.interactions.map(i => ({
+      role: i.type === 'INBOUND' ? 'user' : 'assistant' as 'user' | 'assistant',
+      content: i.content
+    }));
+
+    // 3. AI Inference (Generation + Extraction)
+    const response = await this.aiOrchestrator.generate<AIAnalysisResult['extractedData']>({
+      context: salesContext,
+      message: "Analise o histórico e gere a sugestão de resposta ideal. Responda em JSON.",
+      history,
+      expectedFormat: `
+        {
+          "suggestion": "O texto da mensagem sugerida (curto, matador, com CTA)",
+          "extractedData": {
+            "name": "nome extraído se houver",
+            "email": "email extraído se houver",
+            "industry": "setor identificado",
+            "intent": "GREETING | QUALIFICATION | NEGOTIATION | BOOKING | NEGATIVE"
+          }
+        }
+      `
     });
 
-    this.logger.debug(`Pitch gerado para Lead ${leadId}: ${suggested.id}`);
+    const result = response.extractedData as any; // Cast for simplified access
+    const suggestion = result?.suggestion || response.content;
 
-    return {
-      suggestedMessageId: suggested.id,
-      content: suggested.content,
-    };
+    // 4. Update Lead Data in Background (Enrichment)
+    if (result?.extractedData) {
+      const { name, email, industry } = result.extractedData;
+      await this.prisma.client.lead.update({
+        where: { id: leadId },
+        data: {
+          name: (name && lead.name.includes('Lead')) ? name : undefined,
+          email: email || undefined,
+          industry: industry || undefined,
+          pendingMessage: suggestion, // Buffer for UI sync
+        }
+      });
+    }
+
+    this.logger.debug(`Copilot suggestion generated for Lead ${leadId}`);
+
+    return { suggestion };
   }
 }

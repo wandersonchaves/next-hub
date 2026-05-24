@@ -1,9 +1,11 @@
-import { Controller, Post, Body, UseGuards, Get, Headers, Param } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Headers, Param, BadRequestException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { PrismaService } from '../../prisma/prisma.service';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
-import { ApproveLeadMessageUseCase } from './application/use-cases/approve-lead-message.use-case';
 import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sales-pitch.use-case';
-import { ApproveSuggestedMessageUseCase } from './application/use-cases/approve-suggested-message.use-case';
+import { SendOutboundMessageUseCase } from './application/use-cases/send-outbound-message.use-case';
 import { ClerkGuard } from '../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../common/guards/membership.guard';
 import { BranchIsolationGuard } from '../../common/guards/branch-isolation.guard';
@@ -12,6 +14,7 @@ import { RequireModule } from '../../common/decorators/module.decorator';
 import { CurrentOrg } from '../../common/decorators/org.decorator';
 import type { Organization } from '@enterprise/database';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { normalizePhone } from '../../common/utils/phone-normalization';
 
 @ApiTags('Nexus Prospector')
 @Controller('modules/prospector')
@@ -19,11 +22,12 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @UseGuards(ClerkGuard, MembershipGuard, BranchIsolationGuard, ModuleAccessGuard)
 export class ProspectorController {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly handleIncomingMessageUseCase: HandleIncomingMessageUseCase,
     private readonly sourceLeadsUseCase: SourceLeadsUseCase,
-    private readonly approveUseCase: ApproveLeadMessageUseCase,
     private readonly generatePitchUseCase: GenerateSalesPitchUseCase,
-    private readonly approveSuggestedUseCase: ApproveSuggestedMessageUseCase,
+    private readonly sendMessageUseCase: SendOutboundMessageUseCase,
+    @InjectQueue('proactive-prospecting') private readonly proactiveQueue: Queue,
   ) { }
 
   @Post('chat')
@@ -36,11 +40,21 @@ export class ProspectorController {
       branchId: string;
     },
   ) {
+    const cleanPhone = normalizePhone(body.phone);
+    const lead = await this.prisma.client.lead.findUnique({
+      where: { phone_organizationId: { phone: cleanPhone, organizationId: org.id } }
+    });
+
+    if (!lead) {
+      throw new BadRequestException('Lead not found. Please source it first.');
+    }
+
     return this.handleIncomingMessageUseCase.execute({
+      leadId: lead.id,
       externalId: `manual-${Date.now()}`,
-      phone: body.phone,
+      phone: cleanPhone,
       text: body.message,
-      timestamp: new Date(),
+      timestamp: Math.floor(Date.now() / 1000),
       branchId: body.branchId,
       organizationId: org.id,
     });
@@ -53,12 +67,18 @@ export class ProspectorController {
     @Headers('x-branch-id') branchId: string | undefined,
     @Body() body: { sector: string; region: string },
   ) {
-    return this.sourceLeadsUseCase.execute({
+    // Add to queue for background processing
+    await this.proactiveQueue.add('start-search', {
       sector: body.sector,
       region: body.region,
       organizationId: org.id,
       branchId,
+    }, {
+      removeOnComplete: true,
+      attempts: 2,
     });
+
+    return { status: 'prospecting_started' };
   }
 
   @Post('leads/:id/generate-pitch')
@@ -73,38 +93,39 @@ export class ProspectorController {
     });
   }
 
-  @Post('leads/:id/approve-message')
-  @ApiOperation({ summary: 'Approve and send suggested AI pitch' })
-  async approveMessage(
+  @Post('leads/:id/send-message')
+  @ApiOperation({ summary: 'Send outbound message to lead (manual or assisted)' })
+  async sendMessage(
     @CurrentOrg() org: Organization,
     @Param('id') id: string,
-    @Body() body: { messageId: string; editedText?: string },
+    @Body() body: { text: string },
   ) {
-    return this.approveSuggestedUseCase.execute({
+    return this.sendMessageUseCase.execute({
       leadId: id,
-      messageId: body.messageId,
-      editedText: body.editedText,
-      organizationId: org.id,
-    });
-  }
-
-  @Post('leads/:id/approve')
-  @ApiOperation({ summary: 'Approve and send pending outreach message (Legacy)' })
-  async approve(
-    @CurrentOrg() org: Organization,
-    @Param('id') id: string,
-    @Body() body: { text?: string },
-  ) {
-    return this.approveUseCase.execute({
-      leadId: id,
-      approvedText: body.text,
+      text: body.text,
       organizationId: org.id,
     });
   }
 
   @Get('leads')
-  @ApiOperation({ summary: 'List leads (placeholder)' })
-  async getLeads() {
-    return { leads: [] }; // Placeholder for E2E testing
+  @ApiOperation({ summary: 'List all leads for the organization' })
+  async getLeads(@CurrentOrg() org: Organization) {
+    const leads = await this.prisma.client.lead.findMany({
+      where: { organizationId: org.id },
+      include: {
+        appointments: true,
+        interactions: {
+          orderBy: { createdAt: 'desc' },
+          take: 50
+        },
+        suggestedMessages: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      },
+      orderBy: { lastInteractionAt: 'desc' }
+    });
+
+    return { leads };
   }
 }
