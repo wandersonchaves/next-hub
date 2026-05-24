@@ -52,7 +52,7 @@ export const prisma = new PrismaClient({
         }
 
         // Models that are branch-specific (in addition to being organization-specific)
-        const branchModels = ['Lead', 'Appointment']
+        const branchModels = ['Lead', 'Appointment', 'SuggestedMessage', 'Interaction']
 
         // If we have an organizationId in context, inject it into the query
         if (context?.organizationId) {

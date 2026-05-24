@@ -43,6 +43,8 @@ model Branch {
   organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leads           Lead[]
   appointments    Appointment[]
+  suggestedMessages SuggestedMessage[]
+  interactions    Interaction[]
   userPermissions UserBranchPermission[]
   procedures      Procedure[]
   pets            Pet[]
@@ -140,23 +142,50 @@ model Lead {
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   appointments      Appointment[]
   suggestedMessages SuggestedMessage[]
+  interactions      Interaction[]
 
   @@unique([phone, organizationId])
   @@index([organizationId])
   @@index([branchId])
 }
 
-model SuggestedMessage {
-  id        String   @id @default(cuid())
-  content   String
-  status    String   @default("PENDING_APPROVAL") // PENDING_APPROVAL, APPROVED, REJECTED
-  leadId    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Interaction {
+  id             String   @id @default(cuid())
+  externalId     String?  @unique // WhatsApp Message ID
+  content        String
+  type           String   // INBOUND, OUTBOUND
+  leadId         String
+  branchId       String
+  organizationId String
+  createdAt      DateTime @default(now())
 
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
+  @@index([organizationId])
+  @@index([branchId])
+  @@index([externalId])
+}
+
+model SuggestedMessage {
+  id             String   @id @default(cuid())
+  content        String
+  status         String   @default("PENDING_APPROVAL") // PENDING_APPROVAL, APPROVED, REJECTED
+  leadId         String
+  branchId       String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([leadId])
+  @@index([organizationId])
+  @@index([branchId])
 }
 
 model Appointment {
@@ -256,6 +285,8 @@ model Organization {
   branches            Branch[]
   leads               Lead[]
   appointments        Appointment[]
+  suggestedMessages   SuggestedMessage[]
+  interactions        Interaction[]
   procedures          Procedure[]
   pets                Pet[]
   petServices     PetService[]
