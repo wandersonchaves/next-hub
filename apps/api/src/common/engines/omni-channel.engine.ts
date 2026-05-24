@@ -34,29 +34,32 @@ export class OmniChannelEngine {
       return;
     }
 
+    // Padrão Evolution Go (Alta Performance): Endpoint fixo e Instância via Header
+    const baseUrl = apiUrl.endsWith('/') ? apiUrl.slice(0, -1) : apiUrl;
+    const fullUrl = `${baseUrl}/send/text`;
+
     try {
+      this.logger.debug(`OmniChannel (Evolution Go): Sending message to ${payload.to} via ${fullUrl}`);
+
       await axios.post(
-        `${apiUrl}/message/sendText/${instanceName}`,
+        fullUrl,
         {
           number: payload.to,
-          options: {
-            delay: 1500,
-            presence: 'composing',
-            linkPreview: false,
-          },
-          textMessage: {
-            text: payload.text,
-          },
+          text: payload.text,
         },
         {
           headers: {
             apikey: apiKey,
+            instance: instanceName, // A chave é passar a instância aqui
           },
+          timeout: 10000,
         },
       );
-      this.logger.debug(`OmniChannel: WhatsApp sent to ${payload.to}`);
+      
+      this.logger.debug(`OmniChannel: WhatsApp message sent successfully`);
     } catch (error) {
-      this.logger.error(`OmniChannel WhatsApp failed: ${error.response?.data || error.message}`);
+      const errorData = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+      this.logger.error(`OmniChannel WhatsApp failed at ${fullUrl}: ${errorData}`);
       throw error;
     }
   }

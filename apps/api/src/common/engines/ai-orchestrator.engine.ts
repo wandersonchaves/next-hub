@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { google } from '@ai-sdk/google';
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { openai } from '@ai-sdk/openai';
 import { generateText } from 'ai';
 
@@ -38,32 +38,57 @@ export class AIOrchestratorEngine {
       
       MENSAGEM ATUAL DO USUÁRIO: "${request.message}"
     `;
+    // Attempt with v1beta (supports -latest aliases)
+    const googleV1Beta = createGoogleGenerativeAI({
+      apiKey: geminiKey || '',
+      baseURL: 'https://generativelanguage.googleapis.com/v1beta',
+    });
+
+    // Attempt with v1 (standard stable)
+    const googleV1 = createGoogleGenerativeAI({
+      apiKey: geminiKey || '',
+    });
+
+    const modelsToTry = [
+      { provider: googleV1Beta, name: 'gemini-flash-latest' },
+      { provider: googleV1Beta, name: 'gemini-1.5-flash-latest' },
+      { provider: googleV1, name: 'gemini-1.5-flash' },
+      { provider: googleV1, name: 'gemini-pro' }
+    ];
+
+for (const { provider, name } of modelsToTry) {
+  try {
+    if (!geminiKey) break;
+
+    this.logger.debug(`Attempting AI inference with model: ${name}`);
+    const { text } = await generateText({
+      model: provider(name),
+      prompt,
+      abortSignal: AbortSignal.timeout(30000), // 30s timeout
+    });
+
+    return this.parseResponse<T>(text, !!request.expectedFormat);
+  } catch (err) {
+    this.logger.warn(`Gemini model ${name} failed: ${err.message}`);
+    continue;
+  }
+}
+    // 2. Fallback to OpenAI if Gemini fails or is missing key
+    this.logger.warn(`All Gemini models failed or unavailable, trying GPT-4o as fallback...`);
 
     try {
-      if (!geminiKey) throw new Error('Gemini API key missing');
+      if (!openaiKey) throw new Error('OpenAI API key missing');
 
       const { text } = await generateText({
-        model: google('gemini-1.5-pro'),
+        model: openai('gpt-4o'),
         prompt,
+        abortSignal: AbortSignal.timeout(35000), // 35s for GPT fallback
       });
 
       return this.parseResponse<T>(text, !!request.expectedFormat);
-    } catch (geminiError) {
-      this.logger.warn(`Gemini failed, trying GPT-4o: ${geminiError.message}`);
-
-      try {
-        if (!openaiKey) throw new Error('OpenAI API key missing');
-
-        const { text } = await generateText({
-          model: openai('gpt-4o'),
-          prompt,
-        });
-
-        return this.parseResponse<T>(text, !!request.expectedFormat);
-      } catch (openaiError) {
-        this.logger.error(`AI Fallback Error: ${openaiError.message}`);
-        throw new Error('Falha catastrófica no Motor de IA');
-      }
+    } catch (openaiError) {
+      this.logger.error(`AI Final Fallback Error: ${openaiError.message}`);
+      throw new Error('Falha catastrófica no Motor de IA: Todos os modelos (Gemini/GPT) falharam.');
     }
   }
 
@@ -75,7 +100,7 @@ export class AIOrchestratorEngine {
         const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : cleanText;
         const parsed = JSON.parse(jsonString);
         return {
-          content: parsed.content || cleanText, // Fallback to raw text if no 'content' key
+          content: parsed.content || cleanText,
           extractedData: parsed as T,
           rawResponse: cleanText,
         };
