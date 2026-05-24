@@ -18,11 +18,14 @@ export function ProactiveSearchWidget({ onSuccess }: ProactiveSearchProps) {
   const handleStart = async () => {
     if (!sector || !region) return;
     
+    // Normalização local básica para consistência imediata
+    const normalizedSector = sector.trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
     setLoading(true);
     try {
       await fetcher('/modules/prospector/source', {
         method: 'POST',
-        body: JSON.stringify({ sector, region }),
+        body: JSON.stringify({ sector: normalizedSector, region }),
       });
       onSuccess();
       setSector("");

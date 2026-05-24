@@ -7,26 +7,48 @@ import { StateBadge, ProspectorState } from "@/components/prospector/state-badge
 import { ProactiveSearchWidget } from "@/components/prospector/proactive-search-widget";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useApi } from "@/hooks/use-api";
+import { useState, useEffect, useCallback } from "react";
 import { 
   Users, 
   MessageSquare, 
   CalendarCheck, 
   TrendingUp, 
   Search,
-  ChevronRight
+  ChevronRight,
+  RefreshCw
 } from "lucide-react";
 
 interface Lead {
   id: string;
   name: string;
   phone: string;
-  status: ProspectorState;
+  status: ProspectorState | string;
   score: number;
-  lastInteraction: string;
+  lastInteractionAt: string;
 }
 
 export default function ProspectorDashboard({ params }: { params: { orgSlug: string } }) {
   const { orgSlug } = params;
+  const { fetcher } = useApi();
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const loadLeads = useCallback(async () => {
+    try {
+      const response = await fetcher<{ leads: Lead[] }>('/modules/prospector/leads');
+      setLeads(response.leads);
+    } catch (err) {
+      console.error("Failed to load leads", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetcher]);
+
+  useEffect(() => {
+    loadLeads();
+  }, [loadLeads]);
 
   const columns = [
     { 
@@ -42,7 +64,7 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
     { 
       header: "Status", 
       accessorKey: "status" as keyof Lead,
-      render: (val: ProspectorState) => <StateBadge state={val} />
+      render: (val: string) => <StateBadge state={val as ProspectorState} />
     },
     { 
       header: "Score IA", 
@@ -64,8 +86,8 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
     },
     { 
       header: "Última Interação", 
-      accessorKey: "lastInteraction" as keyof Lead,
-      render: (val: string) => <span className="text-xs text-muted-foreground">{val}</span>
+      accessorKey: "lastInteractionAt" as keyof Lead,
+      render: (val: string) => <span className="text-xs text-muted-foreground">{val ? new Date(val).toLocaleDateString() : 'N/A'}</span>
     },
     {
       header: "",
@@ -82,13 +104,10 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
     }
   ];
 
-  const mockLeads: Lead[] = [
-    { id: "1", name: "Ricardo Almeida", phone: "+55 11 98888-7777", status: "NEGOTIATION", score: 85, lastInteraction: "Há 5 min" },
-    { id: "2", name: "Juliana Costa", phone: "+55 21 97777-6666", status: "BOOKING", score: 92, lastInteraction: "Há 12 min" },
-    { id: "3", name: "Marcos Oliveira", phone: "+55 31 96666-5555", status: "QUALIFICATION", score: 45, lastInteraction: "Há 1h" },
-    { id: "4", name: "Fernanda Lima", phone: "+55 41 95555-4444", status: "NEGATIVE", score: 10, lastInteraction: "Há 3h" },
-    { id: "5", name: "Ana Paula", phone: "+55 51 94444-3333", status: "CONVERTED", score: 100, lastInteraction: "Ontem" },
-  ];
+  const filteredLeads = leads.filter(l => 
+    l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    l.phone.includes(searchTerm)
+  );
 
   return (
     <div className="space-y-6">
@@ -100,8 +119,11 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="icon" onClick={() => loadLeads()} disabled={loading} className="rounded-xl">
+            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+          </Button>
           <Link href={`/${orgSlug}/prospector/chat`}>
-            <Button className="gap-2 rounded-xl shadow-lg">
+            <Button className="gap-2 rounded-xl shadow-lg border-primary/20" variant="outline">
               <MessageSquare size={16} />
               Abrir Pipeline
             </Button>
@@ -113,7 +135,7 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
         <div className="lg:col-span-2 grid gap-4 grid-cols-2 md:grid-cols-4">
           <StatCard
             title="Total de Leads"
-            value="1.284"
+            value={leads.length.toString()}
             trend={{ value: 12, isPositive: true }}
             icon={Users}
           />
@@ -136,7 +158,9 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
             icon={TrendingUp}
           />
         </div>
-        <ProactiveSearchWidget onSuccess={() => {}} />
+        <ProactiveSearchWidget onSuccess={() => {
+          setTimeout(loadLeads, 2000); // Wait for BullMQ to process first leads
+        }} />
       </div>
 
       <div className="rounded-2xl border bg-card shadow-sm overflow-hidden">
@@ -149,13 +173,15 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
                 type="text" 
                 placeholder="Filtrar leads..." 
                 className="pl-9 pr-4 py-1.5 border rounded-xl bg-background text-sm outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
           </div>
         </div>
         <DataTable
           columns={columns}
-          data={mockLeads}
+          data={filteredLeads}
         />
       </div>
     </div>

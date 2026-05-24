@@ -7,7 +7,11 @@ export type ProspectorState =
   | 'NEGOTIATION' 
   | 'BOOKING' 
   | 'NEGATIVE' 
-  | 'CONVERTED';
+  | 'CONVERTED'
+  | 'AWAITING_APPROVAL'
+  | 'OUTBOUND_SENT'
+  | 'NEW'
+  | 'PROSPECTING';
 
 interface StateBadgeProps {
   state: ProspectorState;
@@ -22,6 +26,10 @@ const stateConfig: Record<ProspectorState, { label: string; color: string }> = {
   BOOKING: { label: 'Agendamento', color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
   NEGATIVE: { label: 'Negativa', color: 'bg-red-100 text-red-700 border-red-200' },
   CONVERTED: { label: 'Convertido', color: 'bg-green-100 text-green-700 border-green-200' },
+  AWAITING_APPROVAL: { label: 'Aguardando Aprovação', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  OUTBOUND_SENT: { label: 'Abordagem Enviada', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' },
+  NEW: { label: 'Novo Lead', color: 'bg-slate-100 text-slate-700 border-slate-200' },
+  PROSPECTING: { label: 'Em Prospecção', color: 'bg-blue-50 text-blue-600 border-blue-100' },
 };
 
 export function StateBadge({ state, className }: StateBadgeProps) {
