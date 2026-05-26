@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Headers, Query, BadRequestException, Logger } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
@@ -85,7 +85,7 @@ export class WhatsAppWebhookController {
       return { skipped: true, reason: 'temporal_guard' };
     }
 
-    // 4. Recording
+    // 4. Immediate Recording (The context is saved here, allowing worker to harvest it later)
     try {
       await this.prisma.client.$transaction([
         this.prisma.client.interaction.create({
@@ -110,16 +110,19 @@ export class WhatsAppWebhookController {
       throw err;
     }
 
-    // 5. Dispatch
-    this.whatsappQueue.add('process-message', {
+    // 5. DEBOUNCE DISPATCH (2.5s window)
+    // Using jobId: lead.id ensures BullMQ will reject subsequent additions within the delay window
+    await this.whatsappQueue.add('process-message', {
       leadId: lead.id,
       externalId,
       phone: lead.phone,
-      text: messageContent,
+      text: messageContent, // Individual text passed but worker will re-harvest full context
       timestamp: Math.floor(messageDate.getTime() / 1000),
       organizationId,
       branchId: resolvedBranchId,
     }, {
+      jobId: `debounce-${lead.id}`, // Fixed: Use hyphen instead of colon
+      delay: 2500, // 2.5s typing wait
       removeOnComplete: true,
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 }

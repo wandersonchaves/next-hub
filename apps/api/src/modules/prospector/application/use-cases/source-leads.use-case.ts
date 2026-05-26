@@ -98,21 +98,25 @@ export class SourceLeadsUseCase {
           }
         });
 
-        // 5. Advanced Sales Engineering
+        // 5. Advanced Sales Engineering (Purified SaaS Scope + Gatekeeper Discovery)
         const salesContext = `
-          VOCÊ É UM SDR SÊNIOR ESPECIALISTA EM GROWTH B2B.
-          OBJETIVO: Gerar uma abordagem fria (Cold Outreach) via WhatsApp altamente persuasiva.
+          VOCÊ É UM DIRETOR DE VENDAS SÊNIOR ESPECIALISTA EM NEUROVENDAS.
+          OBJETIVO: Gerar uma abordagem fria (Cold Outreach) focada em EFICIÊNCIA OPERACIONAL.
           
-          ESTRUTURA: AIDA + SPIN Selling.
-          PROIBIDO: "Como posso te ajudar?", "Sou da empresa X".
+          REGRAS DE OURO:
+          - Use **negrito** em palavras de impacto (ex: **furos na agenda**, **gestão automática**, **poupar tempo**).
+          - Use emojis com moderação (🚀, ✨).
+          - BANIDO: Termos técnicos (SaaS, ERP, API). Use **plataforma**, **sistema de gestão** e **automação**.
           
-          CONTEXTO:
-          - Empresa: "${item.name}"
-          - Setor: "${normalizedSector}"
-          - Região: "${region}"
+          ESTRATÉGIA:
+          - Toque no gargalo do setor (furos na agenda/salas vazias).
+          - Inclua uma pergunta sutil para descobrir quem está falando (ex: "Quem cuida da organização dos horários e da recepção aí hoje? É você mesma?").
           
-          ESTILO: Curto, humano, focado na dor do nicho (Estética: no-show, Pet: ociosidade).
-          TERMINAR com uma pergunta de resposta rápida.
+          PONTOS DE ANCORAGEM:
+          - ESTÉTICA: Furos na agenda (no-show) e perda de faturamento por falta de reativação.
+          - PET SHOP: Equipe ociosa e falta de lembretes automáticos para tutores.
+          
+          ESTILO: Curto, profissional (consultivo), focado na dor da desorganização.
         `;
 
         const aiResponse = await this.aiOrchestrator.generate({

@@ -3,12 +3,12 @@ import { Injectable } from '@nestjs/common';
 @Injectable()
 export class SDRConfigEngine {
   getNicheContext(industry?: string | null): string {
-    const defaultContext = 'Foco em eficiência operacional e ROI.';
+    const defaultContext = 'Foco em eficiência operacional, gestão de filiais e automação de processos.';
     
     const contexts: Record<string, string> = {
-      'ESTETICA': 'Dor: Salas vazias e furos na agenda (no-show). Foco: Recuperação de LTV e agendamento automático.',
-      'PET': 'Dor: Equipe de banho ociosa e perda de recorrência. Foco: Bem-estar do pet e conveniência do tutor.',
-      'ODONTO': 'Dor: Pacientes que não voltam para manutenção. Foco: Prevenção e saúde bucal contínua.',
+      'ESTETICA': 'Dor: Salas vazias por no-show e perda de pacientes (LTV baixo). Foco: Automação de confirmações e retenção inteligente de pacientes recorrentes.',
+      'PET': 'Dor: Ociosidade na equipe de banho e falta de controle sobre retornos. Foco: Gestão de agenda e lembretes automáticos para tutores.',
+      'ODONTO': 'Dor: Pacientes que não voltam para manutenção preventiva. Foco: Centralização de controle e régua de relacionamento automática.',
     };
 
     if (!industry) return defaultContext;
@@ -19,10 +19,10 @@ export class SDRConfigEngine {
 
   getPlansContext(): string {
     return `
-      PLANOS DISPONÍVEIS:
-      - Básico: R$ 299/mês (Até 500 leads)
-      - Pro: R$ 599/mês (Leads ilimitados + IA Avançada)
-      - Enterprise: Sob consulta (Multi-unidades)
+      PLATAFORMA SAAS DE GESTÃO E AUTOMAÇÃO:
+      - Starter: R$ 299/mês (Gestão de agenda + Automação básica)
+      - Business: R$ 599/mês (Retenção inteligente + IA Copilot + Multi-unidades)
+      - Enterprise: Sob consulta (Customizações + API ilimitada)
     `;
   }
 }
