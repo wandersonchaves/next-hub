@@ -10,7 +10,7 @@ async function bootstrap() {
   app.use(
     '/api',
     createProxyMiddleware({
-      target: process.env.API_URL || 'http://localhost:3000',
+      target: process.env.API_URL || 'http://127.0.0.1:3001',
       changeOrigin: true,
       pathRewrite: {
         '^/api': '',
