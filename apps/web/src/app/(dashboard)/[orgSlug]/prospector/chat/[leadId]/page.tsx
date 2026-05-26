@@ -1,0 +1,303 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useParams } from "next/navigation";
+import { Button } from "@/components/ui/button";
+import { StateBadge, ProspectorState } from "@/components/prospector/state-badge";
+import { ROICalculator } from "@/components/prospector/roi-calculator";
+import { useApi } from "@/hooks/use-api";
+import { cn } from "@/lib/utils";
+import { 
+  Send, 
+  User, 
+  MoreVertical, 
+  Phone, 
+  AlertCircle,
+  Loader2,
+  Sparkles,
+  Zap,
+  Mail,
+  Target,
+  TrendingUp
+} from "lucide-react";
+
+interface Interaction {
+  id: string;
+  type: 'INBOUND' | 'OUTBOUND';
+  content: string;
+  createdAt: string;
+}
+
+interface Lead {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  score: number;
+  industry?: string;
+  email?: string;
+  interactions: Interaction[];
+}
+
+export default function LeadChatPage() {
+  const { leadId } = useParams() as { leadId: string };
+  const { fetcher } = useApi();
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [lead, setLead] = useState<Lead | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [generating, setGenerateLoading] = useState(false);
+  const [inputText, setInputText] = useState("");
+
+  const loadLead = useCallback(async () => {
+    try {
+      const response = await fetcher<{ leads: Lead[] }>('/modules/prospector/leads');
+      const found = response.leads.find(l => l.id === leadId);
+      if (found) setLead(found);
+    } catch (err) {
+      console.error("Failed to load lead", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetcher, leadId]);
+
+  useEffect(() => {
+    loadLead();
+    const interval = setInterval(loadLead, 5000); // Polling faster for active chat
+    return () => clearInterval(interval);
+  }, [loadLead]);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [lead?.interactions]);
+
+  const handleSendMessage = async () => {
+    if (!lead || !inputText.trim()) return;
+    setSending(true);
+    try {
+      await fetcher(`/modules/prospector/leads/${lead.id}/send-message`, {
+        method: 'POST',
+        body: JSON.stringify({ text: inputText })
+      });
+      setInputText("");
+      await loadLead();
+    } catch (err) {
+      console.error("Failed to send message", err);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleGeneratePitch = async () => {
+    if (!lead) return;
+    setGenerateLoading(true);
+    try {
+      const res = await fetcher<{ suggestion: string }>(`/modules/prospector/leads/${lead.id}/generate-pitch`, {
+        method: 'POST'
+      });
+      setInputText(res.suggestion);
+      await loadLead();
+    } catch (err) {
+      console.error("Generation failed", err);
+    } finally {
+      setGenerateLoading(false);
+    }
+  };
+
+  if (loading && !lead) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-muted/5">
+        <Loader2 className="animate-spin text-primary" size={32} />
+      </div>
+    );
+  }
+
+  if (!lead) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-muted/5">
+        <p className="text-muted-foreground italic font-medium">Lead não encontrado</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 grid grid-cols-9 h-full overflow-hidden">
+      {/* Área do Chat Pura (6 Colunas) */}
+      <div className="col-span-6 flex flex-col bg-background relative border-r h-full overflow-hidden">
+        {/* Header do Chat */}
+        <div className="p-4 border-b bg-background/80 backdrop-blur-md flex justify-between items-center z-10 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20 font-black">
+              {lead.name?.charAt(0) || 'L'}
+            </div>
+            <div>
+              <h3 className="font-bold text-sm leading-none">{lead.name || 'Novo Lead'}</h3>
+              <div className="flex items-center gap-3 mt-1.5">
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Phone size={10} /> {lead.phone}
+                </span>
+                {lead.email && (
+                  <span className="text-[10px] text-muted-foreground flex items-center gap-1 border-l pl-2">
+                    <Mail size={10} /> {lead.email}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full">
+              <MoreVertical size={16} />
+            </Button>
+          </div>
+        </div>
+
+        {/* Histórico de Mensagens */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-slate-50/50">
+          {lead.interactions?.slice().reverse().map((msg) => (
+            <div key={msg.id} className={`flex ${msg.type === 'INBOUND' ? 'justify-start' : 'justify-end'}`}>
+              <div className={cn(
+                "max-w-[85%] rounded-2xl p-4 shadow-sm relative text-sm leading-relaxed",
+                msg.type === 'INBOUND' 
+                  ? "bg-background border rounded-tl-none border-slate-200" 
+                  : "bg-primary text-primary-foreground rounded-tr-none shadow-primary/20"
+              )}>
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+                <span className={cn(
+                  "text-[9px] block mt-2 text-right opacity-60 font-medium uppercase",
+                  msg.type === 'OUTBOUND' ? "text-primary-foreground" : "text-muted-foreground"
+                )}>
+                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </div>
+          ))}
+          {lead.interactions?.length === 0 && (
+             <div className="h-full flex items-center justify-center text-muted-foreground text-xs italic">
+                Aguardando início da conversa estratégica...
+             </div>
+          )}
+        </div>
+
+        {/* Área de Input */}
+        <div className="p-4 border-t bg-background shrink-0 mt-auto">
+          <div className="flex items-end gap-2 max-w-3xl mx-auto">
+            <div className="flex-1 relative">
+              <textarea 
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Digite sua mensagem estratégica..." 
+                className="w-full px-4 py-3 border rounded-2xl bg-muted/20 text-sm outline-none focus:ring-2 focus:ring-primary/50 resize-none min-h-[50px] max-h-48 transition-all scrollbar-hide"
+                rows={Math.min(inputText.split('\n').length, 5)}
+              />
+            </div>
+            <Button 
+              onClick={handleSendMessage}
+              disabled={sending || !inputText.trim()}
+              size="icon" 
+              className="h-12 w-12 rounded-2xl shrink-0 shadow-lg bg-primary hover:bg-primary/90 shadow-primary/20"
+            >
+              {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Painel Executivo (3 Colunas) */}
+      <div className="col-span-3 bg-muted/5 p-6 space-y-6 overflow-y-auto custom-scrollbar">
+        {/* Lead Score Dinâmico */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Lead Scoring IA</h4>
+            <span className={cn(
+              "text-[10px] font-black px-2 py-0.5 rounded-full border",
+              lead.score > 80 ? "bg-green-100 text-green-700 border-green-200" :
+              lead.score > 40 ? "bg-amber-100 text-amber-700 border-amber-200" :
+              "bg-rose-100 text-rose-700 border-rose-200"
+            )}>
+              {lead.score > 80 ? 'HOT' : lead.score > 40 ? 'WARM' : 'COLD'}
+            </span>
+          </div>
+          <div className="p-4 bg-background rounded-2xl border shadow-sm space-y-4">
+             <div className="flex items-center justify-between mb-1">
+                <Target size={18} className="text-primary" />
+                <span className="text-2xl font-black italic tracking-tighter text-primary">{lead.score}</span>
+             </div>
+             <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
+                <div 
+                   className={cn(
+                     "h-full transition-all duration-1000 ease-out",
+                     lead.score > 80 ? "bg-green-500" : lead.score > 40 ? "bg-amber-500" : "bg-rose-500"
+                   )}
+                   style={{ width: `${lead.score}%` }}
+                />
+             </div>
+             <p className="text-[9px] text-muted-foreground italic leading-tight">
+                "Este score é calculado em tempo real pela IA baseado no engajamento e intenção de fechamento."
+             </p>
+          </div>
+        </div>
+
+        {/* Governança de Pipeline */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Governança de Pipeline</h4>
+          <div className="p-4 bg-background rounded-2xl border shadow-sm space-y-4">
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1 font-bold italic">Estágio Atual</p>
+              <StateBadge state={lead.status as ProspectorState} className="w-full justify-center py-1.5 text-[10px] rounded-xl font-black italic uppercase" />
+            </div>
+            
+            {lead.status === 'STALE' && (
+              <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl space-y-2">
+                 <div className="flex items-center gap-2 text-rose-700">
+                    <AlertCircle size={14} className="shrink-0" />
+                    <span className="text-[10px] font-black uppercase italic">Alerta Crítico</span>
+                 </div>
+                 <p className="text-[10px] text-rose-600 leading-tight">
+                    Intervenção humana sugerida. O lead parou de responder ou demonstrou desinteresse.
+                 </p>
+              </div>
+            )}
+            
+            <Button 
+              onClick={handleGeneratePitch} 
+              disabled={generating}
+              variant={lead.status === 'STALE' ? 'destructive' : 'default'}
+              className={cn(
+                "w-full gap-2 h-10 text-[10px] font-black uppercase shadow-lg transition-all rounded-xl",
+                lead.status !== 'STALE' && "animate-pulse hover:animate-none"
+              )}
+            >
+              {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className={lead.status === 'STALE' ? "text-white" : "text-yellow-400"} />}
+              {lead.status === 'STALE' ? 'Sugestão de Retratação' : 'Copiloto: Sugerir Resposta'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Projeção de ROI */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Inteligência Financeira</h4>
+          <ROICalculator weeklyVolume={100} averageTicket={150} />
+        </div>
+
+        {/* Informações de Nicho */}
+        <div className="space-y-3">
+          <h4 className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Contexto Operacional</h4>
+          <div className="p-4 bg-background rounded-2xl border shadow-sm space-y-3">
+             <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                   <Zap size={14} fill="currentColor" />
+                </div>
+                <div>
+                   <p className="text-[10px] text-muted-foreground leading-none mb-1 font-bold uppercase">Setor Normalizado</p>
+                   <p className="text-xs font-black text-indigo-900 tracking-tight">{lead.industry || 'B2B GERAL'}</p>
+                </div>
+             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -94,7 +94,7 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
       accessorKey: "id" as keyof Lead,
       render: (val: string) => (
         <div className="flex justify-end">
-          <Link href={`/${orgSlug}/prospector/chat?id=${val}`}>
+          <Link href={`/${orgSlug}/prospector/chat/${val}`}>
             <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-primary/10 hover:text-primary rounded-full">
               <ChevronRight size={16} />
             </Button>
