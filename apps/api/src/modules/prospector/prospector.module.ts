@@ -15,6 +15,7 @@ import { WhatsAppInboundProcessor } from './infrastructure/queue/whatsapp-inboun
 import { ProactiveProspectingProcessor } from './infrastructure/queue/proactive-prospecting.processor';
 import { SDRConfigEngine } from './infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from './infrastructure/google-calendar.service';
+import { LeadScoringService } from './application/lead-scoring.service';
 import { TenantContextModule } from '../../common/utils/tenant-context/tenant-context.module';
 
 @Module({
@@ -35,6 +36,7 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     ProactiveProspectingProcessor,
     SDRConfigEngine,
     GoogleCalendarService,
+    LeadScoringService,
     {
       provide: 'ILeadRepository',
       useClass: PrismaLeadRepository,
@@ -64,7 +66,8 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     HandleIncomingMessageUseCase, 
     SourceLeadsUseCase, 
     GenerateSalesPitchUseCase, 
-    SendOutboundMessageUseCase
+    SendOutboundMessageUseCase,
+    LeadScoringService
   ],
 })
 export class ProspectorModule { }
