@@ -23,7 +23,7 @@ interface ExtractionResult {
   appointmentDate?: string; // ISO String
   leadName?: string;
   irritationDetected: boolean;
-  isGatekeeper?: boolean; // Detects if the person is a receptionist/attendant
+  isGatekeeper?: boolean;
 }
 
 @Injectable()
@@ -72,12 +72,13 @@ export class HandleIncomingMessageUseCase {
       if (inboundInteractions.length === 0) return;
 
       const accumulatedText = inboundInteractions.map(i => i.content).join('\n');
+      const isShortAnswer = this.checkIfShortAnswer(accumulatedText);
 
-      // 3. Extraction Phase (Pipeline-Aware + Gatekeeper detection)
+      // 3. Extraction Phase
       const extractionContext = `
         VOCÊ É UM ANALISTA DE TRIAGEM SDR. Extraia dados do bloco de mensagens.
-        REGRAS DE GATEKEEPER: Detecte se a pessoa que respondeu é da recepção, atendente ou secretária (ex: "eu sou a atendente", "falo da recepção").
-        REGRAS DE IRRITAÇÃO: Detecte se o lead está ríspido ou reclamando de "muitas perguntas".
+        REGRAS DE GATEKEEPER: Detecte se a pessoa que respondeu é da recepção.
+        REGRAS DE IRRITAÇÃO: Detecte ríspidez ou reclamação de excesso de perguntas.
       `;
 
       const extraction = await this.aiOrchestrator.generate<ExtractionResult>({
@@ -99,34 +100,38 @@ export class HandleIncomingMessageUseCase {
       const extractedEmail = data.email || this.regexExtractEmail(accumulatedText);
       const extractedDate = data.appointmentDate ? new Date(data.appointmentDate) : null;
 
-      // 4. Pipeline State Machine
+      // 4. Pipeline State Machine (STRICT SEQUENCING)
       let systemStatus = 'INTERACTION_RECEIVED';
       let newStatus = lead.status;
+      let finalClosing = false;
 
       if (data.irritationDetected) {
         newStatus = 'STALE';
         systemStatus = 'IRRITACAO_DETECTADA';
       } else if (data.isGatekeeper) {
         newStatus = 'GATEKEEPER_STAGE';
-        systemStatus = 'FALANDO_COM_RECEPCAO';
-      } else if (extractedEmail && extractedDate) {
-        newStatus = 'CONFIRMADO';
-        systemStatus = 'AGENDAMENTO_REALIZADO';
-      } else if (extractedDate) {
-        newStatus = 'AGENDANDO';
-        systemStatus = 'DATA_CONFIRMADA_AGUARDANDO_EMAIL';
-      } else if (extractedEmail || lead.status === 'NEW' || lead.status === 'NEW_UNTOUCHED') {
-        newStatus = 'QUALIFYING';
-        systemStatus = 'QUALIFICACAO_EM_CURSO';
+      } else {
+        // Enforce Email before Link
+        if (extractedDate && !lead.email && !extractedEmail) {
+          newStatus = 'AGENDANDO';
+          systemStatus = 'HORARIO_CAPTURADO_FALTA_EMAIL';
+        } else if ((lead.email || extractedEmail) && extractedDate) {
+          newStatus = 'CONFIRMADO';
+          systemStatus = 'AGENDAMENTO_PRONTO_PARA_FINALIZAR';
+          finalClosing = true;
+        } else if (extractedEmail || lead.status === 'NEW' || lead.status === 'NEW_UNTOUCHED') {
+          newStatus = 'QUALIFYING';
+        }
       }
 
       await this.prisma.client.$transaction(async (tx) => {
-        if (newStatus === 'CONFIRMADO' && extractedEmail && extractedDate) {
+        if (finalClosing && (extractedEmail || lead.email) && extractedDate) {
+          const email = (extractedEmail || lead.email) as string;
           const googleEventId = await this.googleCalendar.createEvent({
             title: `Confirmado: ${lead.name}`,
             startTime: extractedDate,
             endTime: new Date(extractedDate.getTime() + 30 * 60000),
-            attendeeEmail: extractedEmail
+            attendeeEmail: email
           });
           await tx.appointment.create({
             data: {
@@ -153,7 +158,7 @@ export class HandleIncomingMessageUseCase {
         });
       });
 
-      // 5. SDR Refined Prompt (Pipeline-Aware + Gatekeeper Behavior)
+      // 5. SDR Refined Prompt
       const isBusinessHours = this.businessClock.isBusinessHours();
       const nicheContext = this.sdrConfig.getNicheContext(lead.industry);
       const plansContext = this.sdrConfig.getPlansContext();
@@ -164,36 +169,18 @@ export class HandleIncomingMessageUseCase {
         take: 10
       });
 
-      const isConfirmed = newStatus === 'CONFIRMADO';
-      const isGatekeeper = newStatus === 'GATEKEEPER_STAGE';
-
       const salesContext = `
-        VOCÊ É UM DIRETOR DE VENDAS SÊNIOR ESPECIALISTA EM NEUROVENDAS.
-        Sua voz é curta, humana, empática e usa formatação estratégica.
-
-        REGRAS DE INFRAESTRUTURA:
-        - Use **negrito** em palavras de impacto (ex: **furos na agenda**, **gestão automática**, **poupar tempo**).
-        - Use emojis com moderação (🚀, 📅, 🥵, ✨).
-        - BANIDO: Termos técnicos como SaaS, ERP, Multi-tenant, API. Use **plataforma**, **sistema** e **automação**.
-
-        ${isConfirmed ? `
-        --- MODO CONCIERGE ---
-        O agendamento FOI CONCLUÍDO. 
-        MISSÃO: Mensagem de 1 linha confirmando e desejando tchau.
-        ` : isGatekeeper ? `
-        --- MODO GATEKEEPER (BUSCA PELO DECISOR) ---
-        Você está falando com a recepção/atendente.
-        PROIBIDO: Tentar agendar reunião ou falar de valores com ela.
-        MISSÃO: Seja extremamante amigável. Foque em como a ferramenta vai ajudar a PRÓPRIA ATENDENTE a sofrer menos com mensagens manuais e **poupar tempo** dela. Peça o contato do responsável (gerente/dono).
-        Ex: "Super entendo! Ficar confirmando tudo na mão deve dar um trabalho absurdo, né? 🥵 Quem cuida da gerência aí para eu enviar como funciona?"
-        ` : `
-        --- MODO SDR (CONSULTIVO) ---
-        SITUAÇÃO ATUAL: ${systemStatus}
+        VOCÊ É UM DIRETOR DE VENDAS SÊNIOR.
+        SITUAÇÃO: ${systemStatus}
         ESTÁGIO: ${newStatus}
-        NICHO: ${nicheContext}
-        TABELA DE PREÇOS (SE perguntarem): ${plansContext}
-        REGRAS: Bloqueio de repetição de pitch (máx 2x). Responda dúvidas antes de pedir o próximo passo.
-        `}
+
+        --- REGRAS DE OURO ---
+        1. SHORT-ANSWER GUARD: O lead enviou uma resposta curta: "${accumulatedText}". 
+           PROIBIDO repetir pitches, preços (${plansContext}) ou dores. 
+           Se falta o e-mail, peça apenas o e-mail.
+        2. SEQUENCIAÇÃO: Se o horário foi confirmado mas não temos e-mail, FOQUE APENAS em pedir o e-mail. Não envie link ainda.
+        3. FIM DE PAPO: Se o estágio for 'CONFIRMADO', responda em no máximo UMA LINHA celebrativa e de encerramento.
+        4. ANTI-ROBÔ: Não repita argumentos do histórico abaixo.
         
         HISTÓRICO RECENTE:
         ${fullHistory.reverse().map(h => `${h.type}: ${h.content}`).join('\n')}
@@ -212,7 +199,6 @@ export class HandleIncomingMessageUseCase {
           where: { id: lead.id },
           data: { pendingMessage: outreach.content, lastInteractionAt: new Date() }
         });
-        this.logger.log(`Worker: Response for ${phone} (Status: ${newStatus}) queued for approval.`);
       } else {
         await this.omniChannel.sendMessage({ to: phone, text: outreach.content });
 
@@ -236,6 +222,12 @@ export class HandleIncomingMessageUseCase {
       this.logger.error(`Worker Error: ${error.message}`, error.stack);
       throw error;
     }
+  }
+
+  private checkIfShortAnswer(text: string): boolean {
+    const tokens = text.toLowerCase().split(/\s+/);
+    const shortTokens = ['certo', 'sim', 'pode', 'ser', 'ok', 'okay', 'fechado', 'combinado', 'tá', 'ta'];
+    return tokens.length <= 3 && tokens.every(t => shortTokens.includes(t) || t.length <= 2);
   }
 
   private regexExtractEmail(text: string): string | null {

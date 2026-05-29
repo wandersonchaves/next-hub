@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
 
@@ -44,19 +44,27 @@ export class GenerateSalesPitchUseCase {
       throw new Error('Lead não encontrado.');
     }
 
-    // 2. State Mapping
+    // 2. ANTI-CROSSING DEBOUNCE (Lock de Concorrência)
+    // Se houve uma atualização de pendingMessage nos últimos 3 segundos, rejeitamos a duplicidade.
+    const lastUpdate = lead.updatedAt.getTime();
+    const now = Date.now();
+    if (lead.pendingMessage && (now - lastUpdate < 3000)) {
+       this.logger.warn(`Debounce: Rejeitando clique duplo para o lead ${leadId}`);
+       return { suggestion: lead.pendingMessage };
+    }
+
+    // 3. State Mapping
     const isConfirmed = lead.status === 'CONFIRMADO';
     const isGatekeeper = lead.status === 'GATEKEEPER_STAGE';
     const isNew = lead.status === 'NEW' || lead.status === 'NEW_UNTOUCHED';
     
-    // 3. Advanced Computational Linguistics & Neurosales Prompt
+    // 4. Advanced Computational Linguistics
     const linguisticsRules = `
       --- MATRIZ DE VARIAÇÃO LINGUÍSTICA (PROIBIÇÃO DE REPETIÇÃO) ---
       Analise o HISTÓRICO abaixo. Se as expressões em negrito já foram usadas na mensagem anterior, você está PROIBIDO de repeti-las. Use sinônimos:
       - "furos na agenda" -> "horários ociosos", "janelas vagas", "faltas de última hora", "grade bagunçada".
       - "poupar tempo" -> "dar fôlego para sua equipe", "tirar a sobrecarga da recepção", "tornar o dia mais produtivo".
       - "gestão automática" -> "organização fluida", "workflow inteligente", "rotina otimizada".
-      - "plataforma/sistema" -> "ferramenta", "solução de agilidade", "braço direito tecnológico".
     `;
 
     let systemContext = `
@@ -68,11 +76,10 @@ export class GenerateSalesPitchUseCase {
     if (isConfirmed) {
       systemContext += `
         --- MODO CONCIERGE (ENCERRAMENTO CELEBRATIVO) ---
-        O agendamento FOI CONCLUÍDO (BOOKED). 
+        O agendamento FOI CONCLUÍDO. 
         REGRA ABSOLUTA: Proibido vender, falar de ROI, preço, dores ou problemas.
-        MISSÃO: Gere uma mensagem de no máximo UMA LINHA, simpática e fática.
+        MISSÃO: Mensagem de no máximo UMA LINHA, simpática e fática de fechamento.
         Confirme o horário enviado pelo lead como a verdade absoluta.
-        Ex: "Combinadíssimo, Silésia! Tudo certo para amanhã às 15h. O link já está no seu e-mail. Até lá! 👋"
       `;
     } else if (isGatekeeper) {
       systemContext += `
@@ -82,7 +89,7 @@ export class GenerateSalesPitchUseCase {
     } else {
       systemContext += `
         --- MODO SDR (CONSULTIVO) ---
-        PRIORIDADE AO LEAD: Se o lead sugeriu um horário no histórico (ex: "pode ser às 15h"), adote esse horário imediatamente. Não insista em 14h se ele disse 15h.
+        PRIORIDADE AO LEAD: Se o lead sugeriu um horário no histórico, adote esse horário imediatamente. 
         ESTRATÉGIA: Responda primeiro, venda depois.
       `;
     }
@@ -92,10 +99,10 @@ export class GenerateSalesPitchUseCase {
       content: i.content
     }));
 
-    // 4. AI Inference
+    // 5. AI Inference
     const response = await this.aiOrchestrator.generate<AIAnalysisResult>({
       context: systemContext,
-      message: "Gere a melhor resposta para este momento da conversa, garantindo variação linguística total.",
+      message: "Gere a melhor resposta estratégica, garantindo variação linguística total.",
       history,
       expectedFormat: `
         {
@@ -108,18 +115,15 @@ export class GenerateSalesPitchUseCase {
     const result = response.extractedData as any;
     const suggestion = result?.suggestion || response.content;
 
-    // 5. Enrichment (Sync update)
-    if (!isConfirmed && result?.extractedData) {
-      const { name, email } = result.extractedData;
-      await this.prisma.client.lead.update({
-        where: { id: leadId },
-        data: {
-          name: (name && lead.name.includes('Lead')) ? name : undefined,
-          email: email || undefined,
-          pendingMessage: suggestion,
-        }
-      });
-    }
+    // 6. Enrichment
+    await this.prisma.client.lead.update({
+      where: { id: leadId },
+      data: {
+        name: (!isConfirmed && result?.extractedData?.name && lead.name.includes('Lead')) ? result.extractedData.name : undefined,
+        email: (!isConfirmed && result?.extractedData?.email) ? result.extractedData.email : undefined,
+        pendingMessage: suggestion,
+      }
+    });
 
     this.logger.debug(`Linguistic-aware response generated for Lead ${leadId}`);
 
