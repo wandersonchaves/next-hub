@@ -26,7 +26,7 @@ export class WhatsAppInboundProcessor extends WorkerHost {
       text: data.text,
       timestamp: data.timestamp,
       organizationId: data.organizationId,
-      branchId: data.branchId,
+      unitId: data.unitId,
     };
 
     if (!dto.text) {
@@ -38,7 +38,7 @@ export class WhatsAppInboundProcessor extends WorkerHost {
 
     // Execute Use Case within Multi-tenant Context
     return this.tenantContext.run(
-      { organizationId: dto.organizationId, branchId: dto.branchId },
+      { organizationId: dto.organizationId, unitId: dto.unitId },
       () => this.handleIncomingMessage.execute(dto),
     );
   }

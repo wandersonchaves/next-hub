@@ -16,18 +16,18 @@ export class ProactiveProspectingProcessor extends WorkerHost {
   }
 
   async process(job: Job<any, any, string>): Promise<any> {
-    const { sector, region, organizationId, branchId } = job.data;
+    const { sector, region, organizationId, unitId } = job.data;
 
     this.logger.log(`Background Proactive Search: ${sector} in ${region} (Org: ${organizationId})`);
 
     // Execute within Tenant Context for isolation
     return this.tenantContext.run(
-      { organizationId, branchId },
+      { organizationId, unitId },
       () => this.sourceLeads.execute({
         sector,
         region,
         organizationId,
-        branchId,
+        unitId,
       }),
     );
   }

@@ -60,7 +60,7 @@ export class WhatsAppWebhookController {
       where: {
         phone: { endsWith: phoneSignature }
       },
-      select: { id: true, lastInteractionAt: true, phone: true, name: true, branchId: true, organizationId: true }
+      select: { id: true, lastInteractionAt: true, phone: true, name: true, unitId: true, organizationId: true }
     });
 
     if (!lead) {
@@ -71,7 +71,7 @@ export class WhatsAppWebhookController {
     const organizationId = lead.organizationId;
     this.logger.log(`GOD-MODE SUCCESS: Match found! Lead: ${lead.name} (${lead.id}) in Org ${organizationId}`);
 
-    const resolvedBranchId = lead.branchId;
+    const resolvedUnitId = lead.unitId;
 
     // 3. Guards
     const existingInteraction = await this.prisma.client.interaction.findUnique({
@@ -94,7 +94,7 @@ export class WhatsAppWebhookController {
             content: messageContent,
             type: 'INBOUND',
             leadId: lead.id,
-            branchId: resolvedBranchId,
+            unitId: resolvedUnitId,
             organizationId,
             createdAt: messageDate,
           }
@@ -119,7 +119,7 @@ export class WhatsAppWebhookController {
       text: messageContent, // Individual text passed but worker will re-harvest full context
       timestamp: Math.floor(messageDate.getTime() / 1000),
       organizationId,
-      branchId: resolvedBranchId,
+      unitId: resolvedUnitId,
     }, {
       jobId: `debounce-${lead.id}`, // Fixed: Use hyphen instead of colon
       delay: 2500, // 2.5s typing wait

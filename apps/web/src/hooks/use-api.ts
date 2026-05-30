@@ -1,10 +1,13 @@
 import { useAuth } from "@clerk/nextjs";
 import { useCallback } from "react";
+import { useRouter, useParams } from "next/navigation";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
 
 export function useApi() {
   const { getToken, orgId } = useAuth();
+  const router = useRouter();
+  const { orgSlug } = useParams() as { orgSlug: string };
 
   const fetcher = useCallback(async <T>(
     endpoint: string,
@@ -28,13 +31,19 @@ export function useApi() {
       headers,
     });
 
+    if (response.status === 402) {
+      // Tenant Suspended - Redirect to Billing/Suspended page
+      router.push(`/${orgSlug}/billing/suspended`);
+      throw new Error('Assinatura Suspensa');
+    }
+
     if (!response.ok) {
       const error = await response.json().catch(() => ({ message: 'An error occurred' }));
       throw new Error(error.message || 'API request failed');
     }
 
     return response.json();
-  }, [getToken, orgId]);
+  }, [getToken, orgId, router, orgSlug]);
 
   return { fetcher };
 }

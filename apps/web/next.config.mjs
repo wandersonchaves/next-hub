@@ -13,8 +13,9 @@ const nextConfig = {
     optimizePackageImports: ["lucide-react", "date-fns"],
   },
   async rewrites() {
-    // Note: ECONNREFUSED errors during startup are expected as Next.js 
-    // starts faster than the NestJS backend compiles.
+    // Note: ECONNREFUSED errors during startup are expected 'Cold Start' behavior.
+    // Next.js (Fast boot) proxies to NestJS (Slow Webpack build).
+    // The errors will stop automatically as soon as the API logs 'successfully started'.
     return [
       {
         source: '/webhooks/:path*',
