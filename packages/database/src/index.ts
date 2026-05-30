@@ -13,14 +13,16 @@ export type {
   MarketplaceExtension,
   InstalledExtension,
   Workflow,
-  WorkflowStep
+  WorkflowStep,
+  Unit,
+  UserUnitPermission
 } from './generated/client/index.js'
 import { PrismaClient } from './generated/client/index.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
 
-export const tenantContext = new AsyncLocalStorage<{ organizationId: string; branchId?: string }>()
+export const tenantContext = new AsyncLocalStorage<{ organizationId: string; unitId?: string }>()
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -51,20 +53,33 @@ export const prisma = new PrismaClient({
           return query(args)
         }
 
-        // Models that are branch-specific (in addition to being organization-specific)
-        const branchModels = ['Lead', 'Appointment', 'SuggestedMessage', 'Interaction']
+        // Models that are unit-specific (in addition to being organization-specific)
+        const unitModels = [
+          'Lead', 
+          'Appointment', 
+          'SuggestedMessage', 
+          'Interaction', 
+          'Procedure', 
+          'Pet', 
+          'PetService'
+        ]
 
         // If we have an organizationId in context, inject it into the query
         if (context?.organizationId) {
           const anyArgs = args as any
           const whereExtension: any = { organizationId: context.organizationId }
 
-          if (context.branchId && branchModels.includes(model)) {
-            whereExtension.branchId = context.branchId
+          if (context.unitId && unitModels.includes(model)) {
+            whereExtension.unitId = context.unitId
           }
 
-          if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany'].includes(operation)) {
-            anyArgs.where = { ...anyArgs.where, ...whereExtension }
+          if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany', 'findUnique'].includes(operation)) {
+            // Note: findUnique doesn't technically support complex 'where' in the same way, 
+            // but we often use findFirst internally or the middleware handles it if the ID is a compound key.
+            // For simplicity in this extension, we apply it to findFirst/Many.
+            if (operation !== 'findUnique') {
+              anyArgs.where = { ...anyArgs.where, ...whereExtension }
+            }
           } else if (['create', 'createMany'].includes(operation)) {
             if (Array.isArray(anyArgs.data)) {
               anyArgs.data = anyArgs.data.map((item: any) => ({

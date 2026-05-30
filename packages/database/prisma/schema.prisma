@@ -19,37 +19,63 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships       Member[]
-  invitesSent       Invite[]               @relation("InviteSender")
-  auditLogs         AuditLog[]
-  accounts          Account[]
-  branchPermissions UserBranchPermission[]
+  memberships     Member[]
+  invitesSent     Invite[]             @relation("InviteSender")
+  auditLogs       AuditLog[]
+  accounts        Account[]
+  unitPermissions UserUnitPermission[]
 }
 
-enum BranchType {
+enum UnitType {
   HEALTH
   PET
   CORE
 }
 
-model Branch {
-  id             String     @id @default(cuid())
-  name           String
-  type           BranchType @default(CORE)
-  organizationId String
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+enum UnitRole {
+  ORGANIZATION_ADMIN
+  UNIT_MANAGER
+  OPERATIONAL_STAFF
+}
 
-  organization    Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+model Unit {
+  id             String   @id @default(cuid())
+  name           String
+  type           UnitType @default(CORE)
+  organizationId String
+  metadata       Json?    @default("{}")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization    Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   leads           Lead[]
   appointments    Appointment[]
   suggestedMessages SuggestedMessage[]
   interactions    Interaction[]
-  userPermissions UserBranchPermission[]
+  userPermissions UserUnitPermission[]
   procedures      Procedure[]
   pets            Pet[]
   petServices     PetService[]
 
+  @@index([organizationId])
+}
+
+model UserUnitPermission {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String
+  unitId         String
+  role           UnitRole @default(OPERATIONAL_STAFF)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, unitId])
+  @@index([userId])
+  @@index([unitId])
   @@index([organizationId])
 }
 
@@ -59,16 +85,16 @@ model Procedure {
   durationInMinutes Int
   price             Decimal
   organizationId    String
-  branchId          String
+  unitId            String
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   appointments Appointment[]
 
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
 }
 
 enum PetSize {
@@ -93,15 +119,16 @@ model Pet {
   lastBathAt     DateTime?
   tutorId        String
   organizationId String
-  branchId       String
+  unitId         String
+  metadata       Json?     @default("{}")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
   @@index([tutorId])
 }
 
@@ -112,15 +139,15 @@ model PetService {
   durationInMinutes Int
   type              PetServiceType @default(BATH)
   organizationId    String
-  branchId          String
+  unitId            String
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
 }
 
 model Lead {
@@ -133,12 +160,13 @@ model Lead {
   industry          String?
   pendingMessage    String?
   lastInteractionAt DateTime @default(now())
-  branchId          String
+  unitId            String
   organizationId    String
+  metadata          Json?    @default("{}")
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  branch            Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit              Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   appointments      Appointment[]
   suggestedMessages SuggestedMessage[]
@@ -146,7 +174,7 @@ model Lead {
 
   @@unique([phone, organizationId])
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
 }
 
 model Interaction {
@@ -155,17 +183,17 @@ model Interaction {
   content        String
   type           String   // INBOUND, OUTBOUND
   leadId         String
-  branchId       String
+  unitId         String
   organizationId String
   createdAt      DateTime @default(now())
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
   @@index([externalId])
 }
 
@@ -174,18 +202,18 @@ model SuggestedMessage {
   content        String
   status         String   @default("PENDING_APPROVAL") // PENDING_APPROVAL, APPROVED, REJECTED
   leadId         String
-  branchId       String
+  unitId         String
   organizationId String
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([leadId])
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
 }
 
 model Appointment {
@@ -197,37 +225,21 @@ model Appointment {
   status         String   @default("SCHEDULED")
   leadId         String
   procedureId    String?
-  branchId       String
+  unitId         String
   organizationId String
+  metadata       Json?    @default("{}")
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
   procedure    Procedure?   @relation(fields: [procedureId], references: [id], onDelete: SetNull)
-  branch       Branch       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
-  @@index([branchId])
+  @@index([unitId])
   @@index([leadId])
   @@index([procedureId])
-}
-
-model UserBranchPermission {
-  id          String   @id @default(cuid())
-  userId      String
-  branchId    String
-  role        String
-  permissions String[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, branchId])
-  @@index([userId])
-  @@index([branchId])
 }
 
 model Account {
@@ -261,16 +273,32 @@ enum SubscriptionStatus {
   INCOMPLETE
 }
 
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum AutomationMode {
+  COPILOT
+  FULL_AUTOPILOT
+}
+
 model Organization {
-  id         String   @id @default(cuid())
-  clerkId    String?  @unique
+  id             String             @id @default(cuid())
+  clerkId    String?            @unique
   name       String
-  slug       String   @unique
+  slug       String             @unique
   avatarUrl  String?
-  brandColor String?  @default("#0f172a")
+  brandColor String?            @default("#0f172a")
   logoUrl    String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  status     OrganizationStatus @default(ACTIVE)
+  automationMode AutomationMode     @default(COPILOT)
+  usageCount     Int                @default(0)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  enabledModules String[] @default(["CORE"])
 
   members             Member[]
   invites             Invite[]
@@ -282,14 +310,15 @@ model Organization {
   plugins             Plugin[]
   installedExtensions InstalledExtension[]
   workflows           Workflow[]
-  branches            Branch[]
+  units               Unit[]
+  userUnitPermissions UserUnitPermission[]
   leads               Lead[]
   appointments        Appointment[]
   suggestedMessages   SuggestedMessage[]
   interactions        Interaction[]
   procedures          Procedure[]
   pets                Pet[]
-  petServices     PetService[]
+  petServices         PetService[]
 }
 
 model Subscription {
