@@ -11,7 +11,6 @@ export default function LoginPage() {
         }}
         path="/login"
         routing="path"
-        signUpUrl="/register"
         forceRedirectUrl="/dashboard"
         fallbackRedirectUrl="/dashboard"
       />
