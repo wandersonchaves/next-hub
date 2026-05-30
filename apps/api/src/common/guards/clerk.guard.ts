@@ -121,6 +121,10 @@ export class ClerkGuard implements CanActivate {
                 name: cm.organization.name,
                 slug: cm.organization.slug || `org-${cm.organization.id.substring(0, 8)}`,
                 avatarUrl: cm.organization.imageUrl,
+                // In dev mode, grant all modules for newly synced orgs
+                enabledModules: process.env.NODE_ENV !== 'production' 
+                  ? ['PROSPECTOR', 'HEALTH', 'PET'] 
+                  : ['CORE']
               }
             });
 
@@ -157,7 +161,7 @@ export class ClerkGuard implements CanActivate {
           request['organization'] = activeMembership.organization;
           request['membership'] = activeMembership;
 
-          const branchId = request.headers['x-branch-id'] || request.headers['branch-id'];
+          const unitId = request.headers['x-unit-id'] || request.headers['unit-id'];
 
           // Opcionalmente injeta no AsyncLocalStorage se for necessário dentro do Guard ou serviços chamados por ele
           // Nota: Interceptors são mais adequados para o ciclo de vida da request como um todo, 

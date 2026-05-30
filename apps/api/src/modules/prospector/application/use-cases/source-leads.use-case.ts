@@ -1,17 +1,13 @@
-import { Injectable, Inject, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import type { ILeadSourceProvider, IContactFinder } from '../ports/lead-source.port';
-import type { IWhatsAppClient } from '../ports/whatsapp-client.port';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
-import { normalizePhone } from '../../../../common/utils/phone-normalization';
 import { normalizeIndustry } from '../../../../common/utils/industry-normalization';
-import { BusinessClockEngine } from '../../../../common/engines/business-clock.engine';
 
 export interface SourceLeadsDto {
   sector: string;
   region: string;
   organizationId: string;
-  branchId?: string;
+  unitId?: string;
 }
 
 @Injectable()
@@ -20,79 +16,54 @@ export class SourceLeadsUseCase {
 
   constructor(
     private readonly prisma: PrismaService,
-    @Inject('ILeadSourceProvider') private readonly sourceProvider: ILeadSourceProvider,
-    @Inject('IContactFinder') private readonly contactFinder: IContactFinder,
     private readonly aiOrchestrator: AIOrchestratorEngine,
-    private readonly businessClock: BusinessClockEngine,
   ) {}
 
-  async execute(dto: SourceLeadsDto): Promise<{ processed: number; errors: number }> {
+  async execute(dto: SourceLeadsDto): Promise<void> {
     const { sector, region, organizationId } = dto;
-    let { branchId } = dto;
+    let { unitId } = dto;
 
-    // Normalização Cirúrgica do Setor (Consolida Clínica de Estética, etc)
-    const normalizedSector = normalizeIndustry(sector);
+    this.logger.log(`Iniciando busca de leads para ${sector} em ${region}...`);
 
-    const isBusinessHours = this.businessClock.isBusinessHours();
-    if (!isBusinessHours) {
-      this.logger.warn(`Proactive Prospecting triggered outside business hours. Leads will be generated and queued for approval.`);
-    }
-
-    this.logger.log(`Starting proactive prospecting for ${normalizedSector} in ${region}`);
-
-    // Ensure we have a branchId
-    if (!branchId) {
-      let firstBranch = await this.prisma.client.branch.findFirst({
+    // 1. Resolve or Create Unit
+    if (!unitId) {
+      let firstUnit = await this.prisma.client.unit.findFirst({
         where: { organizationId }
       });
 
-      if (!firstBranch) {
-        this.logger.warn(`No branches found for organization ${organizationId}. Auto-creating default branch.`);
-        firstBranch = await this.prisma.client.branch.create({
+      if (!firstUnit) {
+        this.logger.warn(`No units found for organization ${organizationId}. Auto-creating default unit.`);
+        firstUnit = await this.prisma.client.unit.create({
           data: {
-            name: 'Filial Principal',
+            name: 'Matriz Principal',
             organizationId,
+            type: 'CORE'
           }
         });
       }
-      branchId = firstBranch.id;
+      unitId = firstUnit.id;
     }
 
-    // 1. Discovery via Google Maps
-    const discovered = await this.sourceProvider.searchCompanies(normalizedSector, region);
-    let processedCount = 0;
-    let errorCount = 0;
+    // 2. Normalização de Nicho
+    const normalizedSector = normalizeIndustry(sector);
 
-    for (const item of discovered) {
+    // 3. Mocked Scraping Logic (Simulando Google Maps + AI)
+    const mockedLeads = [
+      { name: `${normalizedSector} Central`, phone: '5586994037788' },
+      { name: `${normalizedSector} Bairro`, phone: '5586994037789' }
+    ];
+
+    for (const item of mockedLeads) {
       try {
-        let phone = item.phone;
-
-        // 2. Enrichment
-        if (!phone) {
-          const foundPhone = await this.contactFinder.findMissingPhone(item.name, item.website);
-          if (foundPhone) phone = foundPhone;
-        }
-
-        if (!phone) continue;
-
-        const cleanPhone = normalizePhone(phone);
-
-        // 3. Idempotency Check
-        const existingLead = await this.prisma.client.lead.findUnique({
-          where: { phone_organizationId: { phone: cleanPhone, organizationId } }
-        });
-
-        if (existingLead?.status === 'AWAITING_APPROVAL') continue;
-
-        // 4. PERSISTENCE (UPSET)
+        // 4. Persistence
         const lead = await this.prisma.client.lead.upsert({
-          where: { phone_organizationId: { phone: cleanPhone, organizationId } },
+          where: { phone_organizationId: { phone: item.phone, organizationId } },
           update: { industry: normalizedSector },
           create: {
             name: item.name,
-            phone: cleanPhone,
+            phone: item.phone,
             organizationId,
-            branchId,
+            unitId: unitId!,
             industry: normalizedSector,
             status: 'NEW',
           }
@@ -104,7 +75,7 @@ export class SourceLeadsUseCase {
           OBJETIVO: Gerar uma abordagem fria (Cold Outreach) focada em EFICIÊNCIA OPERACIONAL.
           
           REGRAS DE OURO:
-          - Use **negrito** em palavras de impacto (ex: **furos na agenda**, **gestão automática**, **poupar tempo**).
+          - Use **negrito** em palavras de impactoo (ex: **furos na agenda**, **gestão automática**, **poupar tempo**).
           - Use emojis com moderação (🚀, ✨).
           - BANIDO: Termos técnicos (SaaS, ERP, API). Use **plataforma**, **sistema de gestão** e **automação**.
           
@@ -124,23 +95,15 @@ export class SourceLeadsUseCase {
           message: `Gere o pitch ideal para o lead "${item.name}".`
         });
 
-        // 6. COPILOT MODE
         await this.prisma.client.lead.update({
           where: { id: lead.id },
-          data: {
-            pendingMessage: aiResponse.content,
-            status: 'AWAITING_APPROVAL',
-            lastInteractionAt: new Date()
-          }
+          data: { pendingMessage: aiResponse.content }
         });
 
-        processedCount++;
+        this.logger.debug(`Lead provisioned: ${item.name} with AI pitch.`);
       } catch (err) {
-        this.logger.error(`Error prospecting lead ${item.name}: ${err.message}`);
-        errorCount++;
+        this.logger.error(`Failed to source lead ${item.name}: ${err.message}`);
       }
     }
-
-    return { processed: processedCount, errors: errorCount };
   }
 }

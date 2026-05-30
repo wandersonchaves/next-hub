@@ -3,7 +3,7 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 export interface TenantContext {
   organizationId: string;
-  branchId?: string;
+  unitId?: string;
   userId?: string;
 }
 
@@ -23,8 +23,8 @@ export class TenantContextService {
     return this.context?.organizationId;
   }
 
-  get branchId(): string | undefined {
-    return this.context?.branchId;
+  get unitId(): string | undefined {
+    return this.context?.unitId;
   }
 
   get userId(): string | undefined {

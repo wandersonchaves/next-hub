@@ -2,47 +2,47 @@ import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { HealthController } from './core/health/health.controller';
-import { OrganizationModule } from './core/organization/organization.module';
+import { HealthController } from './modules/nexthub/health/health.controller';
+import { OrganizationModule } from './modules/nexthub/organization/organization.module';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
 
-import { BillingModule } from './core/billing/billing.module';
+import { BillingModule } from './modules/nexthub/billing/billing.module';
 
 import { BullModule } from '@nestjs/bullmq';
-import { NotificationsModule } from './core/notifications/notifications.module';
+import { NotificationsModule } from './modules/nexthub/notifications/notifications.module';
 
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ProspectorModule } from './modules/prospector/prospector.module';
-import { NexusHealthModule } from './modules/nexus-health/nexus-health.module';
-import { NexusPetModule } from './modules/nexus-pet/nexus-pet.module';
+import { HealthModule } from './modules/health/health.module';
+import { PetModule } from './modules/pet/pet.module';
 
-import { AnalyticsModule } from './core/analytics/analytics.module';
-import { AuditLogsModule } from './core/audit-logs/audit-logs.module';
+import { AnalyticsModule } from './modules/nexthub/analytics/analytics.module';
+import { AuditLogsModule } from './modules/nexthub/audit-logs/audit-logs.module';
 
-import { TasksModule } from './core/tasks/tasks.module';
+import { TasksModule } from './modules/nexthub/tasks/tasks.module';
 
 import { WebhooksModule } from './common/webhooks/webhooks.module';
 
-import { BackupModule } from './core/backup/backup.module';
+import { BackupModule } from './modules/nexthub/backup/backup.module';
 
-import { PluginsModule } from './core/plugins/plugins.module';
-
-import { MarketplaceModule } from './core/marketplace/marketplace.module';
+import { PluginsModule } from './modules/nexthub/plugins/plugins.module';
 
 import { validateEnv } from './common/config/env.validation';
 import { PrismaModule } from './prisma/prisma.module';
 import { TenantContextModule } from './common/utils/tenant-context/tenant-context.module';
 import { EnginesModule } from './common/engines/engines.module';
-import { SaaSControlModule } from './core/saas-control/saas-control.module';
+import { SaaSControlModule } from './modules/nexthub/saas-control/saas-control.module';
 import { ClerkGuard } from './common/guards/clerk.guard';
 import { MembershipGuard } from './common/guards/membership.guard';
 import { RolesGuard } from './common/guards/roles.guard';
-import { BranchIsolationGuard } from './common/guards/branch-isolation.guard';
+import { UnitIsolationGuard } from './common/guards/unit-isolation.guard';
 import { PermissionsGuard } from './common/guards/permissions.guard';
 import { ModuleAccessGuard } from './common/guards/module-access.guard';
+import { MultiLevelAuthGuard } from './common/guards/multi-level-auth.guard';
+import { DataArchiverWorker } from './common/workers/data-archiver.worker';
 
 @Module({
   imports: [
@@ -59,14 +59,13 @@ import { ModuleAccessGuard } from './common/guards/module-access.guard';
     NotificationsModule,
     AuditLogsModule,
     ProspectorModule,
-    NexusHealthModule,
-    NexusPetModule,
+    HealthModule,
+    PetModule,
     AnalyticsModule,
     TasksModule,
     WebhooksModule,
     BackupModule,
     PluginsModule,
-    MarketplaceModule,
     ThrottlerModule.forRoot([{
       ttl: 60000,
       limit: 100,
@@ -77,6 +76,9 @@ import { ModuleAccessGuard } from './common/guards/module-access.guard';
         port: parseInt(process.env.REDIS_PORT || '6379'),
       },
     }),
+    BullModule.registerQueue(
+      { name: 'data-archiver' },
+    ),
     PrometheusModule.register(),
     CacheModule.registerAsync({
       isGlobal: true,
@@ -94,9 +96,11 @@ import { ModuleAccessGuard } from './common/guards/module-access.guard';
     ClerkGuard,
     MembershipGuard,
     RolesGuard,
-    BranchIsolationGuard,
+    UnitIsolationGuard,
     PermissionsGuard,
     ModuleAccessGuard,
+    MultiLevelAuthGuard,
+    DataArchiverWorker,
   ],
 })
 export class AppModule implements OnModuleDestroy {
@@ -114,4 +118,3 @@ export class AppModule implements OnModuleDestroy {
     }
   }
 }
-

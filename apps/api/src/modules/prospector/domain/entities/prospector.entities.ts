@@ -4,13 +4,14 @@ export class Lead {
     public readonly name: string,
     public readonly phone: string,
     public readonly organizationId: string,
-    public readonly branchId: string,
-    public readonly email?: string,
+    public readonly unitId: string,
     public readonly status: string = 'NEW',
-    public readonly score: number = 0,
     public readonly industry?: string,
+    public readonly email?: string,
+    public readonly score: number = 0,
+    public readonly pendingMessage?: string,
     public readonly lastInteractionAt: Date = new Date(),
-  ) { }
+  ) {}
 }
 
 export class Appointment {
@@ -20,9 +21,19 @@ export class Appointment {
     public readonly startTime: Date,
     public readonly endTime: Date,
     public readonly leadId: string,
-    public readonly branchId: string,
     public readonly organizationId: string,
-    public readonly status: string = 'SCHEDULED',
+    public readonly unitId: string,
     public readonly googleEventId?: string,
-  ) { }
+  ) {}
+}
+
+export class SuggestedMessage {
+  constructor(
+    public readonly id: string,
+    public readonly content: string,
+    public readonly leadId: string,
+    public readonly organizationId: string,
+    public readonly unitId: string,
+    public readonly status: string = 'PENDING_APPROVAL',
+  ) {}
 }

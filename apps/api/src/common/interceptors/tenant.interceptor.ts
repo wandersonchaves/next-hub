@@ -14,15 +14,15 @@ export class TenantInterceptor implements NestInterceptor {
     
     // Prioritize the database ID resolved by Guards
     const resolvedOrgId = request.organization?.id;
-    const headerOrgId = request.headers['x-organization-id'] || request.headers['organization-id'];
+    const headerOrgId = request.headers['x-company-id'] || request.headers['x-organization-id'] || request.headers['organization-id'] || request.headers['x-tenant-id'];
     
     const organizationId = resolvedOrgId || headerOrgId;
-    const branchId = request.headers['x-branch-id'] || request.headers['branch-id'];
+    const unitId = request.headers['x-unit-id'] || request.headers['unit-id'];
 
     if (organizationId) {
       return tenantContext.run({
         organizationId: organizationId as string,
-        branchId: branchId as string | undefined
+        unitId: unitId as string | undefined
       }, () => next.handle());
     }
 

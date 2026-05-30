@@ -1,18 +1,15 @@
 export class ProspectorLead {
   constructor(
     public readonly id: string,
-    public readonly name: string | null,
+    public readonly name: string,
     public readonly phone: string,
-    public readonly status: string,
-    public readonly lastInteractionAt: Date,
     public readonly organizationId: string,
-    public readonly branchId: string,
+    public readonly unitId: string,
+    public readonly industry?: string,
+    public readonly email?: string,
+    public readonly score: number = 0,
+    public readonly status: string = 'NEW',
+    public readonly pendingMessage?: string,
+    public readonly lastInteractionAt: Date = new Date(),
   ) {}
-
-  /**
-   * Temporal Guard: Rejeita mensagens com timestamp anterior ao lastInteractionAt.
-   */
-  public isStale(incomingTimestamp: Date): boolean {
-    return incomingTimestamp < this.lastInteractionAt;
-  }
 }

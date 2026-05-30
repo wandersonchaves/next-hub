@@ -5,7 +5,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { GetMembershipService } from '../../core/organization/get-membership.service';
+import { GetMembershipService } from '../../modules/nexthub/organization/get-membership.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 import { Role } from '@enterprise/database';
 
@@ -31,9 +31,8 @@ export class MembershipGuard implements CanActivate {
       return false;
     }
 
-    // 1. If we have a headerOrgId, ensure user is a member of that specific organization
+    // 1. Resolve Organization via Header
     if (headerOrgId) {
-      // Check both database ID and Clerk ID for compatibility
       const membership = user.memberships?.find(
         m => m.organization.id === headerOrgId || m.organization.clerkId === headerOrgId
       );
@@ -43,22 +42,28 @@ export class MembershipGuard implements CanActivate {
       }
       request['membership'] = membership;
       request['organization'] = membership.organization;
-    }
-
-    // 2. If no orgSlug is provided, we're done (the header already established context if present)
-    if (!orgSlug) {
       return true;
     }
 
-    // 3. If orgSlug is provided, verify membership by slug (legacy or slug-based routes)
-    const membership = await this.getMembershipService.execute(
-      user.id,
-      orgSlug,
-      requiredRoles,
-    );
+    // 2. Resolve Organization via Slug
+    if (orgSlug) {
+      const membership = await this.getMembershipService.execute(
+        user.id,
+        orgSlug,
+        requiredRoles,
+      );
+      request['membership'] = membership;
+      request['organization'] = membership.organization;
+      return true;
+    }
 
-    request['membership'] = membership;
-    request['organization'] = membership.organization;
+    // 3. Fallback: Use user's first organization if nothing else matches (Dev Experience)
+    if (user.memberships && user.memberships.length > 0) {
+      const firstMembership = user.memberships[0];
+      request['membership'] = firstMembership;
+      request['organization'] = firstMembership.organization;
+      return true;
+    }
 
     return true;
   }

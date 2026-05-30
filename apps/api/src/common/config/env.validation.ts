@@ -12,6 +12,7 @@ export const envSchema = z.object({
   FRONTEND_URL: z.string().url().default('http://localhost:3000'),
   PORT: z.coerce.number().default(3001),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  ADMIN_ID: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

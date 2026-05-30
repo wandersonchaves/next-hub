@@ -1,8 +1,9 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
+import { UsageMeteringService } from '../../../nexthub/application/usage-metering.service';
 
-export interface SendOutboundDto {
+export interface SendMessageDto {
   leadId: string;
   text: string;
   organizationId: string;
@@ -15,56 +16,56 @@ export class SendOutboundMessageUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly omniChannel: OmniChannelEngine,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
-  async execute(dto: SendOutboundDto): Promise<{ status: string }> {
+  async execute(dto: SendMessageDto): Promise<{ status: string }> {
     const { leadId, text, organizationId } = dto;
 
-    // 1. Fetch Lead context
     const lead = await this.prisma.client.lead.findUnique({
       where: { id: leadId },
+      select: { id: true, phone: true, organizationId: true, unitId: true, name: true }
     });
 
     if (!lead || lead.organizationId !== organizationId) {
       throw new NotFoundException('Lead não encontrado.');
     }
 
-    // 2. Dispatch real WhatsApp message via OmniChannel (Evolution Go)
+    // 1. Dispatch via WhatsApp
     await this.omniChannel.sendMessage({
       to: lead.phone,
       text: text,
-      channel: 'WHATSAPP'
     });
 
-    // 3. Update DB Atomically
+    // 2. Register Interaction and clear pending state
     await this.prisma.client.$transaction(async (tx) => {
-      // Record Interaction
       await tx.interaction.create({
         data: {
           content: text,
           type: 'OUTBOUND',
-          leadId: leadId,
-          branchId: lead.branchId,
-          organizationId: organizationId,
+          leadId: lead.id,
+          unitId: lead.unitId,
+          organizationId: lead.organizationId,
         }
       });
 
-      // Update Lead Status and Clear Pending Buffer
       await tx.lead.update({
-        where: { id: leadId },
+        where: { id: lead.id },
         data: { 
-          status: 'OUTBOUND_SENT',
           pendingMessage: null,
           lastInteractionAt: new Date()
         }
       });
 
-      // If there was a pending suggested message, mark it as approved
+      // Clear any pending approval status if exists
       await tx.suggestedMessage.updateMany({
         where: { leadId, status: 'PENDING_APPROVAL' },
         data: { status: 'APPROVED' }
       });
     });
+
+    // 3. Telemetry / Billing
+    await this.usageMetering.incrementUsage(organizationId);
 
     this.logger.log(`Mensagem enviada manualmente/assistida para ${lead.name} (${lead.phone})`);
 

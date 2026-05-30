@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
-import { ProspectorController } from './prospector.controller';
+import { ProspectorController } from './infrastructure/controllers/prospector.controller';
 import { WhatsAppWebhookController } from './infrastructure/controllers/whatsapp-webhook.controller';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';

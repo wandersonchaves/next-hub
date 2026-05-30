@@ -6,6 +6,7 @@ import { BusinessClockEngine } from '../../../../common/engines/business-clock.e
 import { SDRConfigEngine } from '../../infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from '../../infrastructure/google-calendar.service';
 import { LeadScoringService } from '../lead-scoring.service';
+import { UsageMeteringService } from '../../../nexthub/application/usage-metering.service';
 
 export interface IncomingMessageDto {
   leadId: string;
@@ -14,7 +15,7 @@ export interface IncomingMessageDto {
   text: string;
   timestamp: number; // Unix timestamp
   organizationId: string;
-  branchId: string;
+  unitId: string;
 }
 
 interface ExtractionResult {
@@ -38,21 +39,25 @@ export class HandleIncomingMessageUseCase {
     private readonly sdrConfig: SDRConfigEngine,
     private readonly googleCalendar: GoogleCalendarService,
     private readonly leadScoring: LeadScoringService,
+    private readonly usageMetering: UsageMeteringService,
   ) {}
 
   async execute(dto: IncomingMessageDto): Promise<void> {
-    const { leadId, externalId, phone, organizationId, branchId } = dto;
+    const { leadId, externalId, phone, organizationId, unitId } = dto;
 
     try {
-      // 1. Fetch Lead context
+      // 1. Fetch Lead and Organization context
       const lead = await this.prisma.client.lead.findUnique({
         where: { id: leadId },
+        include: { organization: true }
       });
 
       if (!lead) {
         this.logger.error(`Worker Error: Lead ${leadId} not found.`);
         return;
       }
+
+      const organization = lead.organization;
 
       // 2. DEBOUNCE HARVESTING
       const lastOutbound = await this.prisma.client.interaction.findFirst({
@@ -111,7 +116,6 @@ export class HandleIncomingMessageUseCase {
       } else if (data.isGatekeeper) {
         newStatus = 'GATEKEEPER_STAGE';
       } else {
-        // Enforce Email before Link
         if (extractedDate && !lead.email && !extractedEmail) {
           newStatus = 'AGENDANDO';
           systemStatus = 'HORARIO_CAPTURADO_FALTA_EMAIL';
@@ -139,7 +143,7 @@ export class HandleIncomingMessageUseCase {
               startTime: extractedDate,
               endTime: new Date(extractedDate.getTime() + 30 * 60000),
               leadId: lead.id,
-              branchId,
+              unitId,
               organizationId,
               status: 'SCHEDULED',
               googleEventId
@@ -191,8 +195,9 @@ export class HandleIncomingMessageUseCase {
         message: accumulatedText,
       });
 
-      // 6. Dispatch
-      const needsApproval = !isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus);
+      // 6. Dispatch and Metering
+      const isAutopilot = organization.automationMode === 'FULL_AUTOPILOT';
+      const needsApproval = !isAutopilot && (!isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus));
 
       if (needsApproval) {
         await this.prisma.client.lead.update({
@@ -200,23 +205,33 @@ export class HandleIncomingMessageUseCase {
           data: { pendingMessage: outreach.content, lastInteractionAt: new Date() }
         });
       } else {
+        // Direct Send (Autopilot or Pre-approved condition)
         await this.omniChannel.sendMessage({ to: phone, text: outreach.content });
 
-        await this.prisma.client.interaction.create({
-          data: {
-            content: outreach.content,
-            type: 'OUTBOUND',
-            leadId: lead.id,
-            branchId,
-            organizationId,
-          }
-        });
-        
-        await this.prisma.client.lead.update({
-          where: { id: lead.id },
-          data: { lastInteractionAt: new Date() }
-        });
+        await this.prisma.client.$transaction([
+          this.prisma.client.interaction.create({
+            data: {
+              content: outreach.content,
+              type: 'OUTBOUND',
+              leadId: lead.id,
+              unitId,
+              organizationId,
+            }
+          }),
+          this.prisma.client.lead.update({
+            where: { id: lead.id },
+            data: { lastInteractionAt: new Date() }
+          })
+        ]);
+
+        // Increment Telemetry/Usage
+        await this.usageMetering.incrementUsage(organizationId);
       }
+
+      // 7. Dynamic Lead Scoring (Asynchronous)
+      this.leadScoring.updateLeadScore(lead.id).catch(err => {
+        this.logger.error(`Async Scoring Error for lead ${lead.id}: ${err.message}`);
+      });
 
     } catch (error) {
       this.logger.error(`Worker Error: ${error.message}`, error.stack);
