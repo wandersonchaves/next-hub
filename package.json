@@ -5,7 +5,12 @@
     "dev": "turbo run dev",
     "build": "turbo run build",
     "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\""
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "clean": "turbo run clean && rm -rf .turbo apps/web/.next apps/api/dist apps/gateway/dist packages/database/dist",
+    "clean:force": "pnpm clean && rm -rf node_modules",
+    "db:generate": "pnpm --filter @enterprise/database db:generate",
+    "db:push": "pnpm --filter @enterprise/database db:push",
+    "db:seed": "pnpm --filter @enterprise/database db:seed"
   },
   "devDependencies": {
     "@prisma/config": "^7.8.0",
@@ -13,6 +18,7 @@
     "dotenv-cli": "^11.0.0",
     "prettier": "^3.2.5",
     "prisma": "^7.8.0",
+    "tsx": "^4.21.0",
     "turbo": "^1.12.4",
     "typescript": "^5.3.3"
   },
