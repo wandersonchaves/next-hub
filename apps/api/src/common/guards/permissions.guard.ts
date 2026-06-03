@@ -34,8 +34,8 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
-    // Check specific unit permissions
-    const permission = await this.prisma.client.userUnitPermission.findUnique({
+    // Check specific unit permissions using the new UserOrganizationUnit model
+    const permission = await this.prisma.client.userOrganizationUnit.findUnique({
       where: {
         userId_unitId: {
           userId: user.id,
@@ -45,7 +45,6 @@ export class PermissionsGuard implements CanActivate {
     });
 
     if (!permission) {
-      // If no specific unit permission, we might fallback to admin role if applicable
       const membership = request.membership;
       if (membership && (membership.role === 'ADMIN' || membership.role === 'OWNER')) {
         return true;
@@ -53,19 +52,10 @@ export class PermissionsGuard implements CanActivate {
       return false;
     }
 
-    // In the new model, we have UnitRole instead of a string list of permissions
-    // but for backward compatibility or if we decide to keep permissions:
-    // UserUnitPermission model has 'role' field.
-    
-    // For now, let's assume ORGANIZATION_ADMIN has all permissions
     if (permission.role === 'ORGANIZATION_ADMIN' || permission.role === 'UNIT_MANAGER') {
       return true;
     }
 
-    // If we need granular permissions, we should add a 'permissions' field to UserUnitPermission
-    // but the prompt didn't specify it. I'll just return true if any role is present for now,
-    // or handle it by role.
-    
     return true;
   }
 }

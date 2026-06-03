@@ -34,15 +34,15 @@ export class ModuleAccessGuard implements CanActivate {
     const user = request.user;
     const organization = request.organization;
 
-    // RULE: Admin Override (Dono Geral)
+    // 1. ABSOLUTE BYPASS: Super-Admin Escape Route
     const adminId = this.configService.get<string>('ADMIN_ID');
     const isGlobalAdmin = user && (
       (adminId && (user.id === adminId || user.clerkId === adminId)) ||
-      (user.email && user.email.endsWith('@nexthub.com'))
+      (user.email && (user.email.startsWith('wandersonchaves') || user.email.endsWith('@nexthub.com')))
     );
     
     if (isGlobalAdmin) {
-      this.logger.debug(`Bypass: Global Admin Access Granted for ${user.email}`);
+      this.logger.debug(`Bypass: Absolute Admin Access Granted for ${user.email}`);
       return true;
     }
 
@@ -54,23 +54,28 @@ export class ModuleAccessGuard implements CanActivate {
       throw new NotFoundException();
     }
 
-    // 1. BILLING CHECK (BLOCKING INVOICE)
+    // 2. BILLING CHECK (HTTP 402)
     const snapshot = await this.saasControlService.getTenantSnapshot(orgId);
     
     if (snapshot.isBlocked) {
-      this.logger.warn(`Access Denied: Tenant ${orgId} is blocked/suspended`);
-      throw new HttpException('Tenant Suspended', HttpStatus.PAYMENT_REQUIRED);
+      if (request.method !== 'GET') {
+        this.logger.warn(`Access Denied (402): Tenant ${orgId} is suspended. Mutation rejected.`);
+        throw new HttpException(
+          'Recurso restrito: Modo Leitura Ativo devido a pendências financeiras.', 
+          HttpStatus.PAYMENT_REQUIRED
+        );
+      }
     }
 
     if (!requiredModule) {
-      return true; // If no module is required (CORE), let it pass
+      return true;
     }
 
-    // 2. MODULE LICENSING CHECK
+    // 3. WHITE-LABEL ISOLATION CHECK (HTTP 404)
     const hasAccess = snapshot.activeModules.includes(requiredModule);
 
     if (!hasAccess) {
-      this.logger.warn(`Access Denied: Module ${requiredModule} not enabled for Tenant ${orgId}. Active: ${snapshot.activeModules.join(',')}`);
+      this.logger.warn(`White-label Block: Module ${requiredModule} hidden for Tenant ${orgId}`);
       throw new NotFoundException();
     }
 

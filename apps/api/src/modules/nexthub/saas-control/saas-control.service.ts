@@ -9,6 +9,7 @@ export interface TenantSaaSSnapshot {
   status: string;
   activeModules: VerticalModule[];
   plan: string;
+  units: { id: string; name: string; type: string }[];
 }
 
 @Injectable()
@@ -19,13 +20,14 @@ export class SaaSControlService {
 
   /**
    * Retrieves the current SaaS snapshot for a tenant, identifying blocked status and active modules.
-   * In a real implementation, this would query the Subscription or Organization limits.
    */
-  async getTenantSnapshot(organizationId: string): Promise<TenantSaaSSnapshot> {
-    // For demo purposes, we will fetch the organization and simulate modules based on some properties or just return all for admins
+  async getTenantSnapshot(organizationId: string, userId?: string): Promise<TenantSaaSSnapshot> {
     const org = await this.prisma.client.organization.findUnique({
       where: { id: organizationId },
-      include: { subscription: true }
+      include: { 
+        subscription: true,
+        units: true
+      }
     });
 
     if (!org) {
@@ -35,12 +37,30 @@ export class SaaSControlService {
     // Active modules are derived from the organization's enabledModules field.
     const activeModules = (org.enabledModules as VerticalModule[]) || ['CORE'];
 
+    // Filter units based on user permissions if userId is provided
+    let units = org.units.map(u => ({ id: u.id, name: u.name, type: u.type }));
+    
+    if (userId) {
+      const userPermissions = await this.prisma.client.userOrganizationUnit.findMany({
+        where: { userId, organizationId }
+      });
+      
+      const allowedUnitIds = userPermissions.map(p => p.unitId);
+      
+      // If user has specific unit permissions, filter. 
+      // If no specific unit permissions but they are a member, they might have org-level access (handled by guards).
+      if (allowedUnitIds.length > 0) {
+        units = units.filter(u => allowedUnitIds.includes(u.id));
+      }
+    }
+
     return {
       organizationId: org.id,
       isBlocked: org.status === 'SUSPENDED' || org.status === 'INACTIVE', 
       status: org.status,
       activeModules,
-      plan: org.subscription?.plan || 'FREE'
+      plan: org.subscription?.plan || 'FREE',
+      units
     };
   }
 
@@ -48,7 +68,6 @@ export class SaaSControlService {
     const snapshot = await this.getTenantSnapshot(organizationId);
     
     if (snapshot.isBlocked) {
-      this.logger.warn(`Access denied for ${organizationId}: Tenant is blocked`);
       return false;
     }
 

@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
-import { tenantContext } from '@enterprise/database';
 
 @Injectable()
 export class TenantContextGuard implements CanActivate {
@@ -37,29 +36,21 @@ export class TenantContextGuard implements CanActivate {
     );
 
     if (isSuperAdmin) {
-      // In Super-Admin mode, we might still want to respect the unitId if provided for simulation
-      // but otherwise we let them through to everything.
       return true;
     }
 
     // 2. Client Isolation & Role Validation
     if (!companyId || !unitId) {
-      // If no context is provided for a unit-specific action, we can't authorize
-      // Some routes might not need unitId, but this guard is for strict isolation.
-      // If we are at org level, we'd need organization validation.
-      
       if (!companyId && !organization) {
          throw new ForbiddenException('Company context is required');
       }
-      
-      return true; // Let other guards handle pure organization access
+      return true; 
     }
 
-    // Identify organization ID (trust header or resolved org)
     const resolvedOrgId = organization?.id || companyId;
 
-    // Check specific Unit permission for the User
-    const permission = await this.prisma.client.userUnitPermission.findFirst({
+    // Check specific Unit permission for the User using the new UserOrganizationUnit model
+    const permission = await this.prisma.client.userOrganizationUnit.findFirst({
       where: {
         userId: user.id,
         unitId: unitId as string,
@@ -68,12 +59,8 @@ export class TenantContextGuard implements CanActivate {
     });
 
     if (!permission) {
-      // Return 404 to hide existence
       throw new NotFoundException('Recurso não localizado ou acesso negado.');
     }
-
-    // The implicit filtering is handled by TenantInterceptor + Prisma Extension.
-    // This guard just ensures the user HAS the right to be in this context.
 
     return true;
   }
