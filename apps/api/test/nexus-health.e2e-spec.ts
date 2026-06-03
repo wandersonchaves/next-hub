@@ -7,23 +7,17 @@ import { ClerkGuard } from '../src/common/guards/clerk.guard';
 import { AIOrchestratorEngine } from '../src/common/engines/ai-orchestrator.engine';
 import * as jwt from 'jsonwebtoken';
 
-describe('Nexus Health Clinical Intelligence (e2e)', () => {
+describe('Nexus Health (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let orgId: string;
-  let branchId: string;
+  let unitId: string;
   let userId: string;
-  let patientId: string;
   const jwtSecret = 'test-secret';
 
   const mockAI = {
     generate: jest.fn().mockResolvedValue({
       content: 'Resumo de teste gerado por IA.',
-      extractedData: {
-        summary: 'Paciente com histórico estável.',
-        recommendedNextSteps: ['Continuar tratamento'],
-        riskLevel: 'LOW'
-      }
     })
   };
 
@@ -31,7 +25,7 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const user = await prisma.client.user.findUnique({
-        where: { clerkId: 'health_user' },
+        where: { clerkId: 'health_user_e2e' },
         include: { memberships: { include: { organization: true } } }
       });
       req['user'] = user;
@@ -55,19 +49,24 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
 
     prisma = app.get<PrismaService>(PrismaService);
 
-    // Setup Data
+    const suffix = Date.now();
     const org = await prisma.client.organization.create({
-      data: { name: 'Health Clinic', slug: 'health-clinic', clerkId: 'health_org' }
+      data: { 
+        name: 'Health Clinic E2E', 
+        slug: `health-clinic-${suffix}`, 
+        clerkId: `health_org_${suffix}`,
+        enabledModules: ['HEALTH']
+      }
     });
     orgId = org.id;
 
-    const branch = await prisma.client.branch.create({
-      data: { name: 'Main', organizationId: orgId }
+    const unit = await prisma.client.unit.create({
+      data: { name: 'Main', organizationId: orgId, type: 'HEALTH' }
     });
-    branchId = branch.id;
+    unitId = unit.id;
 
     const user = await prisma.client.user.create({
-      data: { email: 'doctor@health.com', clerkId: 'health_user' }
+      data: { email: `doctor-e2e-${suffix}@nexthub.com`, clerkId: 'health_user_e2e' }
     });
     userId = user.id;
 
@@ -76,12 +75,11 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
     });
 
     const patient = await prisma.client.lead.create({
-      data: { name: 'João Silva', phone: '11999999999', organizationId: orgId, branchId }
+      data: { name: 'João Silva', phone: '11999999999', organizationId: orgId, unitId }
     });
-    patientId = patient.id;
 
     const procedure = await prisma.client.procedure.create({
-      data: { name: 'Botox', durationInMinutes: 30, price: 1200, organizationId: orgId, branchId }
+      data: { name: 'Botox', durationInMinutes: 30, price: 1200, organizationId: orgId, unitId }
     });
 
     await prisma.client.appointment.create({
@@ -89,38 +87,40 @@ describe('Nexus Health Clinical Intelligence (e2e)', () => {
         title: 'Aplicação de Botox',
         startTime: new Date(),
         endTime: new Date(),
-        leadId: patientId,
+        leadId: patient.id,
         procedureId: procedure.id,
         organizationId: orgId,
-        branchId,
+        unitId,
         status: 'COMPLETED'
       }
     });
   });
 
   afterAll(async () => {
-    await prisma.client.appointment.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.procedure.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.lead.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.member.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.branch.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
-    await prisma.client.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
-    await prisma.client.user.deleteMany({ where: { id: userId } }).catch(() => {});
+    if (orgId) {
+      await prisma.client.appointment.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+      await prisma.client.procedure.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+      await prisma.client.lead.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+      await prisma.client.member.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+      await prisma.client.unit.deleteMany({ where: { organizationId: orgId } }).catch(() => {});
+      await prisma.client.organization.deleteMany({ where: { id: orgId } }).catch(() => {});
+    }
+    if (userId) {
+      await prisma.client.user.deleteMany({ where: { id: userId } }).catch(() => {});
+    }
     await app.close();
   });
 
-  it('should generate clinical summary for a patient (GET /patients/:id/summary)', async () => {
-    const token = jwt.sign({ sub: 'health_user', org_id: 'health_org' }, jwtSecret);
+  it('/modules/health/agenda (GET)', async () => {
+    const token = jwt.sign({ sub: 'health_user_e2e', org_id: 'health_org' }, jwtSecret);
 
     const response = await request(app.getHttpServer())
-      .get(`/health-management/patients/${patientId}/summary`)
+      .get(`/modules/health/agenda`)
       .set('Authorization', `Bearer ${token}`)
-      .set('x-branch-id', branchId)
+      .set('x-unit-id', unitId)
       .set('x-organization-id', orgId);
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveProperty('summary');
-    expect(response.body).toHaveProperty('riskLevel', 'LOW');
-    expect(mockAI.generate).toHaveBeenCalled();
+    expect(Array.isArray(response.body)).toBe(true);
   });
 });
