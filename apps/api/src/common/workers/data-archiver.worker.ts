@@ -39,10 +39,10 @@ export class DataArchiverWorker extends WorkerHost {
       return acc;
     }, {} as Record<string, any[]>);
 
-    // FIX: Using explicit type for entries to avoid 'unknown' type errors
-    const entries = Object.entries(groupedByTenant) as [string, any[]][];
+    // Explicitly casting to avoid any potential TS metadata/compilation issues in PRD
+    const groupEntries = Object.entries(groupedByTenant);
 
-    for (const [orgId, interactions] of entries) {
+    for (const [orgId, interactions] of groupEntries) {
       try {
         this.logger.log(`Archiving ${interactions.length} interactions for Tenant ${orgId}`);
 

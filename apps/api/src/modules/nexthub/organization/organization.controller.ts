@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
 import { OrganizationService } from './organization.service';
-import { Role } from '@enterprise/database';
-import type { User, Organization } from '@enterprise/database';
+import type { Role, User, Organization } from '@enterprise/database';
 import { ClerkGuard } from '../../../common/guards/clerk.guard';
 import { MembershipGuard } from '../../../common/guards/membership.guard';
 import { CurrentUser } from '../../../common/decorators/user.decorator';

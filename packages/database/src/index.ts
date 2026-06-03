@@ -1,4 +1,4 @@
-export * from './generated/client/index.js'
+export * from './generated/client'
 export type {
   Organization,
   User,
@@ -17,9 +17,11 @@ export type {
   Unit,
   UserOrganizationUnit,
   UserInvitation,
-  LeadPipeline
-} from './generated/client/index.js'
-import { PrismaClient } from './generated/client/index.js'
+  LeadPipeline,
+  Plan,
+  Role
+} from './generated/client'
+import { PrismaClient } from './generated/client'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
@@ -73,8 +75,7 @@ export const prisma = new PrismaClient({
           const whereExtension: any = { organizationId: context.organizationId }
 
           if (context.unitId && unitModels.includes(model)) {
-            // Note: LeadPipeline is linked to Lead, which is linked to Unit.
-            // But LeadPipeline table itself doesn't have unitId in schema (I didn't add it).
+            // whereExtension.unitId = context.unitId;
           }
 
           if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany', 'findUnique'].includes(operation)) {
