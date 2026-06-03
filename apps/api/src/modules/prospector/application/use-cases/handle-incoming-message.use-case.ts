@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
 import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
 import { BusinessClockEngine } from '../../../../common/engines/business-clock.engine';
-import { SDRConfigEngine } from '../../infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from '../../infrastructure/google-calendar.service';
 import { LeadScoringService } from '../lead-scoring.service';
 import { UsageMeteringService } from '../../../nexthub/application/usage-metering.service';
+import { AIChatService } from '../../services/ai-chat.service';
 
 export interface IncomingMessageDto {
   leadId: string;
@@ -25,6 +27,7 @@ interface ExtractionResult {
   leadName?: string;
   irritationDetected: boolean;
   isGatekeeper?: boolean;
+  isPricingQuery?: boolean;
 }
 
 @Injectable()
@@ -36,17 +39,17 @@ export class HandleIncomingMessageUseCase {
     private readonly aiOrchestrator: AIOrchestratorEngine,
     private readonly omniChannel: OmniChannelEngine,
     private readonly businessClock: BusinessClockEngine,
-    private readonly sdrConfig: SDRConfigEngine,
-    private readonly googleCalendar: GoogleCalendarService,
     private readonly leadScoring: LeadScoringService,
     private readonly usageMetering: UsageMeteringService,
+    private readonly aiChat: AIChatService,
+    @InjectQueue('calendar-orchestrator') private readonly calendarQueue: Queue,
   ) {}
 
   async execute(dto: IncomingMessageDto): Promise<void> {
-    const { leadId, externalId, phone, organizationId, unitId } = dto;
+    const { leadId, phone, organizationId, unitId } = dto;
 
     try {
-      // 1. Fetch Lead and Organization context
+      // 1. Fetch Context
       const lead = await this.prisma.client.lead.findUnique({
         where: { id: leadId },
         include: { organization: true }
@@ -59,7 +62,7 @@ export class HandleIncomingMessageUseCase {
 
       const organization = lead.organization;
 
-      // 2. DEBOUNCE HARVESTING
+      // 2. Debounce Harvesting
       const lastOutbound = await this.prisma.client.interaction.findFirst({
         where: { leadId, type: 'OUTBOUND' },
         orderBy: { createdAt: 'desc' }
@@ -77,141 +80,152 @@ export class HandleIncomingMessageUseCase {
       if (inboundInteractions.length === 0) return;
 
       const accumulatedText = inboundInteractions.map(i => i.content).join('\n');
-      const isShortAnswer = this.checkIfShortAnswer(accumulatedText);
 
-      // 3. Extraction Phase
+      // 3. Extraction Phase (NLP DATE FIX & TIMEZONE GUARD)
+      const now = new Date();
+      // Brazil Timezone Offset (UTC-3)
+      const brTime = new Date(now.getTime() - (3 * 3600 * 1000));
+      const currentYear = brTime.getUTCFullYear();
+      const currentDay = brTime.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' });
+      const currentFullDate = brTime.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+      const currentTime = brTime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
+
       const extractionContext = `
         VOCÊ É UM ANALISTA DE TRIAGEM SDR. Extraia dados do bloco de mensagens.
-        REGRAS DE GATEKEEPER: Detecte se a pessoa que respondeu é da recepção.
-        REGRAS DE IRRITAÇÃO: Detecte ríspidez ou reclamação de excesso de perguntas.
+        
+        ÂNCORA TEMPORAL (UTC-3 - Brasília):
+        - Hoje é ${currentDay}, dia ${currentFullDate} (Ano: ${currentYear}).
+        - Hora atual: ${currentTime}.
+        - Se o lead disser "amanhã" e hoje for Domingo, considere a segunda-feira seguinte.
+        - SEJA PRECISO COM O ANO: O ano atual é ${currentYear}.
       `;
 
       const extraction = await this.aiOrchestrator.generate<ExtractionResult>({
         context: extractionContext,
         message: accumulatedText,
-        expectedFormat: `
-          {
-            "intent": "GREETING | BOOKING | QUESTION | NEGATIVE | OTHER",
-            "email": "string ou null",
-            "appointmentDate": "ISO8601 string ou null",
-            "leadName": "string ou null",
-            "irritationDetected": boolean,
-            "isGatekeeper": boolean
-          }
-        `
+        expectedFormat: `{ "intent": "BOOKING...", "email": "string", "appointmentDate": "ISO8601", "isPricingQuery": boolean }`
       });
 
-      const data = extraction.extractedData || { intent: 'OTHER', irritationDetected: false, isGatekeeper: false };
-      const extractedEmail = data.email || this.regexExtractEmail(accumulatedText);
+      const data = extraction.extractedData || { intent: 'OTHER', irritationDetected: false, isGatekeeper: false, isPricingQuery: false };
+      
+      // 4. ATOMIC SANITIZATION
+      const extractedEmail = data.email ? data.email.trim().toLowerCase() : this.regexExtractEmail(accumulatedText);
       const extractedDate = data.appointmentDate ? new Date(data.appointmentDate) : null;
 
-      // 4. Pipeline State Machine (STRICT SEQUENCING)
+      // 5. Pipeline State Machine
       let systemStatus = 'INTERACTION_RECEIVED';
       let newStatus = lead.status;
-      let finalClosing = false;
+      let isFinalClosingTriggered = false;
 
       if (data.irritationDetected) {
         newStatus = 'STALE';
-        systemStatus = 'IRRITACAO_DETECTADA';
       } else if (data.isGatekeeper) {
         newStatus = 'GATEKEEPER_STAGE';
       } else {
-        if (extractedDate && !lead.email && !extractedEmail) {
+        const isPricingObjection = data.isPricingQuery || this.checkPricingKeywords(accumulatedText);
+        
+        if (isPricingObjection && lead.status === 'CONFIRMADO') {
+           systemStatus = 'OBJECAO_POS_AGENDAMENTO';
+        }
+
+        if (extractedDate && (lead.email || extractedEmail)) {
+          newStatus = 'CONFIRMADO';
+          systemStatus = isPricingObjection ? 'OBJECAO_POS_AGENDAMENTO' : 'AGENDAMENTO_PRONTO_PARA_FINALIZAR';
+          isFinalClosingTriggered = !isPricingObjection;
+        } else if (extractedDate) {
           newStatus = 'AGENDANDO';
           systemStatus = 'HORARIO_CAPTURADO_FALTA_EMAIL';
-        } else if ((lead.email || extractedEmail) && extractedDate) {
-          newStatus = 'CONFIRMADO';
-          systemStatus = 'AGENDAMENTO_PRONTO_PARA_FINALIZAR';
-          finalClosing = true;
-        } else if (extractedEmail || lead.status === 'NEW' || lead.status === 'NEW_UNTOUCHED') {
+        } else if (extractedEmail || lead.email) {
+          newStatus = 'QUALIFYING';
+          systemStatus = 'EMAIL_CAPTURADO_FALTA_HORARIO';
+        } else if (lead.status === 'NEW' || lead.status === 'NEW_UNTOUCHED') {
           newStatus = 'QUALIFYING';
         }
       }
 
+      // 6. Database Sync
       await this.prisma.client.$transaction(async (tx) => {
-        if (finalClosing && (extractedEmail || lead.email) && extractedDate) {
-          const email = (extractedEmail || lead.email) as string;
-          const googleEventId = await this.googleCalendar.createEvent({
-            title: `Confirmado: ${lead.name}`,
-            startTime: extractedDate,
-            endTime: new Date(extractedDate.getTime() + 30 * 60000),
-            attendeeEmail: email
-          });
-          await tx.appointment.create({
-            data: {
-              title: `Agendamento Nexus: ${lead.name}`,
-              startTime: extractedDate,
-              endTime: new Date(extractedDate.getTime() + 30 * 60000),
-              leadId: lead.id,
-              unitId,
-              organizationId,
-              status: 'SCHEDULED',
-              googleEventId
-            }
-          });
-        }
-
         await tx.lead.update({
           where: { id: lead.id },
           data: { 
             status: newStatus, 
-            email: extractedEmail || lead.email,
-            name: (data.leadName && lead.name.includes('Lead')) ? data.leadName : lead.name,
+            email: extractedEmail || undefined,
+            name: (data.leadName && lead.name.includes('Lead')) ? data.leadName : undefined,
             pendingMessage: null 
           }
         });
       });
 
-      // 5. SDR Refined Prompt
-      const isBusinessHours = this.businessClock.isBusinessHours();
-      const nicheContext = this.sdrConfig.getNicheContext(lead.industry);
-      const plansContext = this.sdrConfig.getPlansContext();
-      
+      // 7. ASYNC CALENDAR ORCHESTRATION (BullMQ with Meet generation)
+      if (isFinalClosingTriggered && (extractedEmail || lead.email) && extractedDate) {
+         const finalEmail = (extractedEmail || lead.email) as string;
+         await this.calendarQueue.add('orchestrate-event', {
+            leadId: lead.id,
+            startTime: extractedDate.toISOString(),
+            attendeeEmail: finalEmail,
+            organizationId,
+            unitId,
+            title: `Agendamento Nexus: ${lead.name}`
+         }, {
+            removeOnComplete: true,
+            attempts: 3,
+            backoff: { type: 'exponential', delay: 5000 }
+         });
+         this.logger.log(`Queue: Calendar orchestration dispatched for lead ${lead.id}`);
+      }
+
+      // 8. AI Response Generation
       const fullHistory = await this.prisma.client.interaction.findMany({
         where: { leadId },
         orderBy: { createdAt: 'desc' },
         take: 10
       });
 
-      const salesContext = `
-        VOCÊ É UM DIRETOR DE VENDAS SÊNIOR.
-        SITUAÇÃO: ${systemStatus}
-        ESTÁGIO: ${newStatus}
+      const isBusinessHours = this.businessClock.isBusinessHours();
 
-        --- REGRAS DE OURO ---
-        1. SHORT-ANSWER GUARD: O lead enviou uma resposta curta: "${accumulatedText}". 
-           PROIBIDO repetir pitches, preços (${plansContext}) ou dores. 
-           Se falta o e-mail, peça apenas o e-mail.
-        2. SEQUENCIAÇÃO: Se o horário foi confirmado mas não temos e-mail, FOQUE APENAS em pedir o e-mail. Não envie link ainda.
-        3. FIM DE PAPO: Se o estágio for 'CONFIRMADO', responda em no máximo UMA LINHA celebrativa e de encerramento.
-        4. ANTI-ROBÔ: Não repita argumentos do histórico abaixo.
-        
-        HISTÓRICO RECENTE:
-        ${fullHistory.reverse().map(h => `${h.type}: ${h.content}`).join('\n')}
-      `;
+      const aiResponse = await this.aiChat.generateResponse({
+        lead: {
+          id: lead.id,
+          name: lead.name,
+          status: newStatus,
+          industry: lead.industry || undefined,
+          email: lead.email || extractedEmail || undefined,
+          metadata: lead.metadata
+        },
+        fullHistory: fullHistory.reverse().map(h => `${h.type}: ${h.content}`).join('\n'),
+        isBusinessHours,
+        systemStatus
+      }, accumulatedText);
 
-      const outreach = await this.aiOrchestrator.generate({
-        context: salesContext,
-        message: accumulatedText,
-      });
+      // 9. Autopilot Engine (FULL AUTONOMY)
+      // Activating Autopilot if flag is true OR if it's the validated playbook flow
+      const isAutopilotActive = organization.enableAutopilot === true || organization.automationMode === 'FULL_AUTOPILOT';
+      const isSuspended = organization.status === 'SUSPENDED';
 
-      // 6. Dispatch and Metering
-      const isAutopilot = organization.automationMode === 'FULL_AUTOPILOT';
-      const needsApproval = !isAutopilot && (!isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus));
+      // Playbook validation: if confirmed, we always want to dispatch the final confirmation automatically
+      const isConfirmedSuccess = newStatus === 'CONFIRMADO' && isFinalClosingTriggered;
+      
+      const shouldAutoDispatch = isAutopilotActive || isConfirmedSuccess;
+
+      const needsApproval = !shouldAutoDispatch && (!isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus));
 
       if (needsApproval) {
         await this.prisma.client.lead.update({
           where: { id: lead.id },
-          data: { pendingMessage: outreach.content, lastInteractionAt: new Date() }
+          data: { pendingMessage: aiResponse.content, lastInteractionAt: new Date() }
         });
       } else {
-        // Direct Send (Autopilot or Pre-approved condition)
-        await this.omniChannel.sendMessage({ to: phone, text: outreach.content });
+        if (isSuspended) {
+          this.logger.warn(`Autopilot Blocked: Organization ${organizationId} is SUSPENDED.`);
+          return;
+        }
+
+        await this.omniChannel.sendMessage({ to: phone, text: aiResponse.content });
 
         await this.prisma.client.$transaction([
           this.prisma.client.interaction.create({
             data: {
-              content: outreach.content,
+              content: aiResponse.content,
               type: 'OUTBOUND',
               leadId: lead.id,
               unitId,
@@ -224,30 +238,29 @@ export class HandleIncomingMessageUseCase {
           })
         ]);
 
-        // Increment Telemetry/Usage
         await this.usageMetering.incrementUsage(organizationId);
       }
 
-      // 7. Dynamic Lead Scoring (Asynchronous)
+      // 10. Lead Scoring
       this.leadScoring.updateLeadScore(lead.id).catch(err => {
-        this.logger.error(`Async Scoring Error for lead ${lead.id}: ${err.message}`);
+        this.logger.error(`Scoring Error: ${err.message}`);
       });
 
     } catch (error) {
-      this.logger.error(`Worker Error: ${error.message}`, error.stack);
+      this.logger.error(`Worker Error: ${error.message}`);
       throw error;
     }
-  }
-
-  private checkIfShortAnswer(text: string): boolean {
-    const tokens = text.toLowerCase().split(/\s+/);
-    const shortTokens = ['certo', 'sim', 'pode', 'ser', 'ok', 'okay', 'fechado', 'combinado', 'tá', 'ta'];
-    return tokens.length <= 3 && tokens.every(t => shortTokens.includes(t) || t.length <= 2);
   }
 
   private regexExtractEmail(text: string): string | null {
     const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
     const match = text.match(emailRegex);
-    return match ? match[0] : null;
+    return match ? match[0].trim().toLowerCase() : null;
+  }
+
+  private checkPricingKeywords(text: string): boolean {
+    const keywords = ['valor', 'preço', 'preco', 'plano', 'quanto custa', 'investimento', 'mensalidade'];
+    const normalized = text.toLowerCase();
+    return keywords.some(k => normalized.includes(k));
   }
 }

@@ -87,8 +87,14 @@ for (const { provider, name } of modelsToTry) {
 
       return this.parseResponse<T>(text, !!request.expectedFormat);
     } catch (openaiError) {
-      this.logger.error(`AI Final Fallback Error: ${openaiError.message}`);
-      throw new Error('Falha catastrófica no Motor de IA: Todos os modelos (Gemini/GPT) falharam.');
+      let errorMessage = `AI Final Fallback Error: ${openaiError.message}`;
+      
+      if (openaiError.message.includes('quota') || openaiError.message.includes('billing')) {
+        errorMessage = 'Falha de Faturamento/Quota na OpenAI. Verifique seus créditos.';
+      }
+      
+      this.logger.error(errorMessage);
+      throw new Error(`Falha catastrófica no Motor de IA: Verifique o faturamento da Google (Gemini) e OpenAI (GPT).`);
     }
   }
 

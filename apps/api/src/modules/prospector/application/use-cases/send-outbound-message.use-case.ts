@@ -24,11 +24,15 @@ export class SendOutboundMessageUseCase {
 
     const lead = await this.prisma.client.lead.findUnique({
       where: { id: leadId },
-      select: { id: true, phone: true, organizationId: true, unitId: true, name: true }
+      include: { organization: true }
     });
 
     if (!lead || lead.organizationId !== organizationId) {
       throw new NotFoundException('Lead não encontrado.');
+    }
+
+    if (lead.organization.status === 'SUSPENDED') {
+      throw new ForbiddenException('Recurso restrito: Sua conta possui pendências financeiras e o envio de mensagens foi pausado.');
     }
 
     // 1. Dispatch via WhatsApp
