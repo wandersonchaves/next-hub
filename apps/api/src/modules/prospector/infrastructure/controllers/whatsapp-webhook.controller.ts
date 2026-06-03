@@ -110,7 +110,7 @@ export class WhatsAppWebhookController {
       throw err;
     }
 
-    // 5. DEBOUNCE DISPATCH (2.5s window)
+    // 5. DEBOUNCE DISPATCH (30s window - Humanized Buffer)
     // Using jobId: lead.id ensures BullMQ will reject subsequent additions within the delay window
     await this.whatsappQueue.add('process-message', {
       leadId: lead.id,
@@ -122,7 +122,7 @@ export class WhatsAppWebhookController {
       unitId: resolvedUnitId,
     }, {
       jobId: `debounce-${lead.id}`, // Fixed: Use hyphen instead of colon
-      delay: 2500, // 2.5s typing wait
+      delay: 30000, // 30s typing wait (Staff-level debounce)
       removeOnComplete: true,
       attempts: 3,
       backoff: { type: 'exponential', delay: 2000 }

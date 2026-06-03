@@ -50,16 +50,20 @@ export class OmniChannelEngine {
         {
           headers: {
             apikey: apiKey,
-            instance: instanceName, // A chave é passar a instância aqui
+            instance: instanceName,
           },
-          timeout: 10000,
+          timeout: 30000, // Increased to 30s for better resilience
         },
       );
       
       this.logger.debug(`OmniChannel: WhatsApp message sent successfully`);
     } catch (error) {
-      const errorData = error.response?.data ? JSON.stringify(error.response.data) : error.message;
-      this.logger.error(`OmniChannel WhatsApp failed at ${fullUrl}: ${errorData}`);
+      if (error.code === 'ENOTFOUND') {
+        this.logger.error(`OmniChannel DNS Error: Could not resolve ${fullUrl}. Check your internet connection.`);
+      } else {
+        const errorData = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+        this.logger.error(`OmniChannel WhatsApp failed at ${fullUrl}: ${errorData}`);
+      }
       throw error;
     }
   }
