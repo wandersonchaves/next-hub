@@ -24,7 +24,6 @@ describe('AppController', () => {
 
   describe('root', () => {
     it('should return "Hello World!"', () => {
-      // Current implementation returns v2.0 message
       expect(appController.getHello()).toContain('NextHub API');
     });
   });
