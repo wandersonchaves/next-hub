@@ -37,7 +37,7 @@ export class DataArchiverWorker extends WorkerHost {
       if (!acc[orgId]) acc[orgId] = [];
       acc[orgId].push(current);
       return acc;
-    }, {} as Record<string, typeof oldInteractions>);
+    }, {} as Record<string, any[]>);
 
     for (const [orgId, interactions] of Object.entries(groupedByTenant)) {
       try {
@@ -51,7 +51,7 @@ export class DataArchiverWorker extends WorkerHost {
         await this.simulateS3Upload(fileName, archivePayload);
 
         // 4. Safe Pruning (Atomic Transaction)
-        const interactionIds = interactions.map(i => i.id);
+        const interactionIds = interactions.map((i: any) => i.id);
         await this.prisma.client.interaction.deleteMany({
           where: {
             id: { in: interactionIds },

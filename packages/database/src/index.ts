@@ -75,7 +75,6 @@ export const prisma = new PrismaClient({
           if (context.unitId && unitModels.includes(model)) {
             // Note: LeadPipeline is linked to Lead, which is linked to Unit.
             // But LeadPipeline table itself doesn't have unitId in schema (I didn't add it).
-            // Let's check schema again.
           }
 
           if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany', 'findUnique'].includes(operation)) {
