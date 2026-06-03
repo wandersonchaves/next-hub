@@ -32,36 +32,37 @@ export class DataArchiverWorker extends WorkerHost {
     }
 
     // 2. Group by Tenant for Batch Archiving
-    const groupedByTenant = oldInteractions.reduce((acc, current) => {
+    const groupedByTenant: Record<string, any[]> = oldInteractions.reduce((acc: any, current: any) => {
       const orgId = current.organizationId;
       if (!acc[orgId]) acc[orgId] = [];
       acc[orgId].push(current);
       return acc;
     }, {} as Record<string, any[]>);
 
-    // FIX: Using explicit type for entries to avoid 'unknown' type errors in PRD
-    const entries: [string, any[]][] = Object.entries(groupedByTenant);
+    // Explicitly casting to avoid any potential TS metadata/compilation issues in PRD
+    const entries = Object.entries(groupedByTenant);
 
-    for (const [orgId, interactions] of entries) {
+    for (const [orgId, tenantInteractions] of entries) {
       try {
-        this.logger.log(`Archiving ${interactions.length} interactions for Tenant ${orgId}`);
+        const interactionsCount = (tenantInteractions as any[]).length;
+        this.logger.log(`Archiving ${interactionsCount} interactions for Tenant ${orgId}`);
 
         // 3. SIMULATE S3 UPLOAD
-        const archivePayload = JSON.stringify(interactions);
+        const archivePayload = JSON.stringify(tenantInteractions);
         const fileName = `archives/${orgId}/interactions_${new Date().toISOString()}.json`;
         
         // Mocking AWS SDK call
         await this.simulateS3Upload(fileName, archivePayload);
 
         // 4. Safe Pruning (Atomic Transaction)
-        const interactionIds = interactions.map((i: any) => i.id);
+        const interactionIds = (tenantInteractions as any[]).map((i: any) => i.id);
         await this.prisma.client.interaction.deleteMany({
           where: {
             id: { in: interactionIds },
           },
         });
 
-        this.logger.log(`Pruned ${interactions.length} records for Tenant ${orgId} after successful S3 sync.`);
+        this.logger.log(`Pruned ${interactionsCount} records for Tenant ${orgId} after successful S3 sync.`);
       } catch (err) {
         this.logger.error(`Failed to archive data for Tenant ${orgId}: ${err.message}`);
       }
