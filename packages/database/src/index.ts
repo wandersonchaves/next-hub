@@ -74,10 +74,6 @@ export const prisma = new PrismaClient({
           const anyArgs = args as any
           const whereExtension: any = { organizationId: context.organizationId }
 
-          if (context.unitId && unitModels.includes(model)) {
-            // whereExtension.unitId = context.unitId;
-          }
-
           if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany', 'findUnique'].includes(operation)) {
             if (operation !== 'findUnique') {
               anyArgs.where = { ...anyArgs.where, ...whereExtension }
