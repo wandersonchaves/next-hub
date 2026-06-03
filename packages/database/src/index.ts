@@ -1,4 +1,4 @@
-export * from './generated/client'
+export * from './generated/client/index.js'
 export type {
   Organization,
   User,
@@ -22,8 +22,8 @@ export type {
   Role,
   Lead,
   Appointment
-} from './generated/client'
-import { PrismaClient } from './generated/client'
+} from './generated/client/index.js'
+import { PrismaClient } from './generated/client/index.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
