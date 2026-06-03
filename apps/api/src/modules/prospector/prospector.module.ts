@@ -10,13 +10,16 @@ import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastruct
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
 import { EvolutionWhatsAppClient } from './infrastructure/adapters/evolution-whatsapp.client';
 import { GoogleMapsLeadSourceAdapter } from './infrastructure/adapters/google-maps-lead-source.adapter';
+import { MockLeadSourceAdapter } from './infrastructure/adapters/mock-lead-source.adapter';
 import { WebSearchContactFinderAdapter } from './infrastructure/adapters/web-search-contact-finder.adapter';
 import { WhatsAppInboundProcessor } from './infrastructure/queue/whatsapp-inbound.processor';
 import { ProactiveProspectingProcessor } from './infrastructure/queue/proactive-prospecting.processor';
 import { SDRConfigEngine } from './infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from './infrastructure/google-calendar.service';
 import { LeadScoringService } from './application/lead-scoring.service';
+import { AIChatService } from './services/ai-chat.service';
 import { TenantContextModule } from '../../common/utils/tenant-context/tenant-context.module';
+import { CalendarOrchestratorWorker } from '../../common/workers/calendar-orchestrator.worker';
 
 @Module({
   imports: [
@@ -24,6 +27,7 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     BullModule.registerQueue(
       { name: 'whatsapp-inbound' },
       { name: 'proactive-prospecting' },
+      { name: 'calendar-orchestrator' },
     ),
   ],
   controllers: [ProspectorController, WhatsAppWebhookController],
@@ -37,6 +41,8 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     SDRConfigEngine,
     GoogleCalendarService,
     LeadScoringService,
+    AIChatService,
+    CalendarOrchestratorWorker,
     {
       provide: 'ILeadRepository',
       useClass: PrismaLeadRepository,
@@ -55,8 +61,15 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     },
     {
       provide: 'ILeadSourceProvider',
-      useClass: GoogleMapsLeadSourceAdapter,
+      useFactory: (maps: GoogleMapsLeadSourceAdapter, mock: MockLeadSourceAdapter) => {
+        // Toggle: Se estiver em produção ou a flag USE_REAL_LEADS for true, usa o Maps real.
+        const useReal = process.env.NODE_ENV === 'production' || process.env.USE_REAL_LEADS === 'true';
+        return useReal ? maps : mock;
+      },
+      inject: [GoogleMapsLeadSourceAdapter, MockLeadSourceAdapter],
     },
+    GoogleMapsLeadSourceAdapter,
+    MockLeadSourceAdapter,
     {
       provide: 'IContactFinder',
       useClass: WebSearchContactFinderAdapter,
@@ -67,7 +80,8 @@ import { TenantContextModule } from '../../common/utils/tenant-context/tenant-co
     SourceLeadsUseCase, 
     GenerateSalesPitchUseCase, 
     SendOutboundMessageUseCase,
-    LeadScoringService
+    LeadScoringService,
+    AIChatService
   ],
 })
 export class ProspectorModule { }

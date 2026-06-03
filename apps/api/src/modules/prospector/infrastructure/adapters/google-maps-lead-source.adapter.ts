@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios from 'axios';
-import { ILeadSourceProvider, SourcedLead } from '../../application/ports/lead-source.port';
+import { ILeadSourceProvider, ScrapedLead } from '../../application/ports/lead-source.port';
 
 @Injectable()
 export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
@@ -9,57 +9,59 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
 
   constructor(private readonly configService: ConfigService) {}
 
-  async searchCompanies(sector: string, region: string): Promise<SourcedLead[]> {
-    const apiKey = this.configService.get<string>('GOOGLE_MAPS_API_KEY');
+  async findLeads(sector: string, region: string): Promise<ScrapedLead[]> {
+    const apiKey = this.configService.get<string>('SERPER_API_KEY');
+    
     if (!apiKey) {
-      this.logger.error('GOOGLE_MAPS_API_KEY is missing');
+      this.logger.error('SERPER_API_KEY is missing. Real lead sourcing will fail.');
       return [];
     }
 
     try {
-      // 1. Text Search for companies
-      const response = await axios.get(
-        'https://maps.googleapis.com/maps/api/place/textsearch/json',
+      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps para: ${sector} em ${region}`);
+
+      const response = await axios.post(
+        'https://google.serper.dev/maps',
         {
-          params: {
-            query: `${sector} em ${region}`,
-            key: apiKey,
+          q: `${sector} em ${region}`,
+          gl: 'br',
+          hl: 'pt-br',
+        },
+        {
+          headers: {
+            'X-API-KEY': apiKey,
+            'Content-Type': 'application/json',
           },
+          timeout: 15000,
         },
       );
 
-      const places = response.data.results || [];
-      const sourcedLeads: SourcedLead[] = [];
+      const results = response.data.maps || [];
+      
+      const realLeads = results
+        .filter((place: any) => place.phoneNumber)
+        .map((place: any) => ({
+          name: place.title,
+          phone: this.sanitizePhoneNumber(place.phoneNumber),
+          address: place.address,
+          rating: place.rating,
+          website: place.website,
+        }));
 
-      // 2. Fetch Details for each place (to get phone and website)
-      for (const place of places.slice(0, 10)) { // Limit to 10 for performance/cost
-        const detailsResponse = await axios.get(
-          'https://maps.googleapis.com/maps/api/place/details/json',
-          {
-            params: {
-              place_id: place.place_id,
-              fields: 'name,formatted_phone_number,website,formatted_address',
-              key: apiKey,
-            },
-          },
-        );
+      this.logger.log(`Busca concluída. ${realLeads.length} leads reais encontrados.`);
+      return realLeads.slice(0, 10);
 
-        const details = detailsResponse.data.result;
-        if (details) {
-          sourcedLeads.push({
-            name: details.name,
-            address: details.formatted_address,
-            phone: details.formatted_phone_number,
-            website: details.website,
-            placeId: place.place_id,
-          });
-        }
-      }
-
-      return sourcedLeads;
     } catch (error) {
-      this.logger.error(`Google Maps Search Failed: ${error.message}`);
+      this.logger.error(`Falha na busca real: ${error.message}`);
       return [];
     }
+  }
+
+  private sanitizePhoneNumber(raw: string): string {
+    let cleaned = raw.replace(/\D/g, '');
+    if (cleaned.length === 10 || cleaned.length === 11) {
+      cleaned = `55${cleaned}`;
+    }
+    return cleaned;
   }
 }

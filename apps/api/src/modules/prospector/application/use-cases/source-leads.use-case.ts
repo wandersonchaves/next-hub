@@ -1,7 +1,7 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { AIOrchestratorEngine } from '../../../../common/engines/ai-orchestrator.engine';
-import { normalizeIndustry } from '../../../../common/utils/industry-normalization';
+import type { ILeadSourceProvider } from '../ports/lead-source.port';
 
 export interface SourceLeadsDto {
   sector: string;
@@ -17,13 +17,14 @@ export class SourceLeadsUseCase {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiOrchestrator: AIOrchestratorEngine,
+    @Inject('ILeadSourceProvider') private readonly leadSource: ILeadSourceProvider,
   ) {}
 
   async execute(dto: SourceLeadsDto): Promise<void> {
     const { sector, region, organizationId } = dto;
     let { unitId } = dto;
 
-    this.logger.log(`Iniciando busca de leads para ${sector} em ${region}...`);
+    this.logger.log(`Workflow: Prospecção para ${sector} em ${region}...`);
 
     // 1. Resolve or Create Unit
     if (!unitId) {
@@ -32,7 +33,6 @@ export class SourceLeadsUseCase {
       });
 
       if (!firstUnit) {
-        this.logger.warn(`No units found for organization ${organizationId}. Auto-creating default unit.`);
         firstUnit = await this.prisma.client.unit.create({
           data: {
             name: 'Matriz Principal',
@@ -44,55 +44,51 @@ export class SourceLeadsUseCase {
       unitId = firstUnit.id;
     }
 
-    // 2. Normalização de Nicho
-    const normalizedSector = normalizeIndustry(sector);
+    // 2. BUSCA DE LEADS (ADAPTATIVA: MOCK OU REAL)
+    const leads = await this.leadSource.findLeads(sector, region);
 
-    // 3. Mocked Scraping Logic (Simulando Google Maps + AI)
-    const mockedLeads = [
-      { name: `${normalizedSector} Central`, phone: '5586994037788' },
-      { name: `${normalizedSector} Bairro`, phone: '5586994037789' }
-    ];
+    if (leads.length === 0) {
+       this.logger.warn('Nenhum lead encontrado para os critérios fornecidos.');
+       return;
+    }
 
-    for (const item of mockedLeads) {
+    for (const item of leads) {
       try {
-        // 4. Persistence
+        // 3. Persistência
         const lead = await this.prisma.client.lead.upsert({
           where: { phone_organizationId: { phone: item.phone, organizationId } },
-          update: { industry: normalizedSector },
+          update: { industry: sector },
           create: {
             name: item.name,
             phone: item.phone,
             organizationId,
             unitId: unitId!,
-            industry: normalizedSector,
+            industry: sector,
             status: 'NEW',
+            metadata: {
+               address: item.address,
+               rating: item.rating,
+               website: item.website,
+               source: 'DISCOVERY_MODULE'
+            }
           }
         });
 
-        // 5. Advanced Sales Engineering (Purified SaaS Scope + Gatekeeper Discovery)
+        // 4. Geração de Pitch via IA
         const salesContext = `
-          VOCÊ É UM DIRETOR DE VENDAS SÊNIOR ESPECIALISTA EM NEUROVENDAS.
-          OBJETIVO: Gerar uma abordagem fria (Cold Outreach) focada em EFICIÊNCIA OPERACIONAL.
+          VOCÊ É UM SDR ESPECIALISTA EM VENDAS B2B.
+          OBJETIVO: Gerar abordagem personalizada para uma empresa real encontrada no Maps.
+          DADOS DA EMPRESA:
+          - Nome: ${item.name}
+          - Endereço: ${item.address || 'Não informado'}
+          - Avaliação: ${item.rating || 'N/A'} estrelas
           
-          REGRAS DE OURO:
-          - Use **negrito** em palavras de impactoo (ex: **furos na agenda**, **gestão automática**, **poupar tempo**).
-          - Use emojis com moderação (🚀, ✨).
-          - BANIDO: Termos técnicos (SaaS, ERP, API). Use **plataforma**, **sistema de gestão** e **automação**.
-          
-          ESTRATÉGIA:
-          - Toque no gargalo do setor (furos na agenda/salas vazias).
-          - Inclua uma pergunta sutil para descobrir quem está falando (ex: "Quem cuida da organização dos horários e da recepção aí hoje? É você mesma?").
-          
-          PONTOS DE ANCORAGEM:
-          - ESTÉTICA: Furos na agenda (no-show) e perda de faturamento por falta de reativação.
-          - PET SHOP: Equipe ociosa e falta de lembretes automáticos para tutores.
-          
-          ESTILO: Curto, profissional (consultivo), focado na dor da desorganização.
+          ESTILO: Consultivo, rápido, focado em ajudar a clínica/empresa a crescer.
         `;
 
         const aiResponse = await this.aiOrchestrator.generate({
           context: salesContext,
-          message: `Gere o pitch ideal para o lead "${item.name}".`
+          message: `Gere o primeiro contato via WhatsApp para o lead "${item.name}".`
         });
 
         await this.prisma.client.lead.update({
@@ -100,10 +96,12 @@ export class SourceLeadsUseCase {
           data: { pendingMessage: aiResponse.content }
         });
 
-        this.logger.debug(`Lead provisioned: ${item.name} with AI pitch.`);
+        this.logger.debug(`Lead Processado: ${item.name}`);
       } catch (err) {
-        this.logger.error(`Failed to source lead ${item.name}: ${err.message}`);
+        this.logger.error(`Falha ao processar lead ${item.name}: ${err.message}`);
       }
     }
+
+    this.logger.log(`Workflow Concluído: ${leads.length} leads provisionados com pitches personalizados.`);
   }
 }

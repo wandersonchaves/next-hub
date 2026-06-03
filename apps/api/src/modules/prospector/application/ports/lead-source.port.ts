@@ -1,13 +1,13 @@
-export interface SourcedLead {
+export interface ScrapedLead {
   name: string;
+  phone: string;
   address?: string;
-  phone?: string;
+  rating?: number;
   website?: string;
-  placeId: string;
 }
 
 export interface ILeadSourceProvider {
-  searchCompanies(sector: string, region: string): Promise<SourcedLead[]>;
+  findLeads(sector: string, region: string): Promise<ScrapedLead[]>;
 }
 
 export interface IContactFinder {
