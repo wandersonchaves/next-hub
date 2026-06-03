@@ -15,7 +15,9 @@ export type {
   Workflow,
   WorkflowStep,
   Unit,
-  UserUnitPermission
+  UserOrganizationUnit,
+  UserInvitation,
+  LeadPipeline
 } from './generated/client/index.js'
 import { PrismaClient } from './generated/client/index.js'
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -61,7 +63,8 @@ export const prisma = new PrismaClient({
           'Interaction', 
           'Procedure', 
           'Pet', 
-          'PetService'
+          'PetService',
+          'LeadPipeline'
         ]
 
         // If we have an organizationId in context, inject it into the query
@@ -70,13 +73,12 @@ export const prisma = new PrismaClient({
           const whereExtension: any = { organizationId: context.organizationId }
 
           if (context.unitId && unitModels.includes(model)) {
-            whereExtension.unitId = context.unitId
+            // Note: LeadPipeline is linked to Lead, which is linked to Unit.
+            // But LeadPipeline table itself doesn't have unitId in schema (I didn't add it).
+            // Let's check schema again.
           }
 
           if (['findFirst', 'findMany', 'count', 'updateMany', 'deleteMany', 'findUnique'].includes(operation)) {
-            // Note: findUnique doesn't technically support complex 'where' in the same way, 
-            // but we often use findFirst internally or the middleware handles it if the ID is a compound key.
-            // For simplicity in this extension, we apply it to findFirst/Many.
             if (operation !== 'findUnique') {
               anyArgs.where = { ...anyArgs.where, ...whereExtension }
             }

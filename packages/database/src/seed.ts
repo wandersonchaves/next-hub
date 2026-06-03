@@ -1,9 +1,9 @@
 import { prisma } from './index.js';
 
 async function main() {
-  console.log('--- Multi-Level Access Refactor Seed (Final) ---');
+  console.log('--- Multi-Level Access Refactor Seed (Final v4) ---');
 
-  // 1. SEDE PRINCIPAL: Sua organização Admin
+  // 1. MASTER ADMIN & HQ
   const admin = await prisma.user.upsert({
     where: { email: 'wanderson.admin@nexthub.com' },
     update: {},
@@ -14,44 +14,55 @@ async function main() {
     },
   });
 
-  const orgHq = await prisma.organization.upsert({
-    where: { slug: 'sede-principal' },
-    update: { enabledModules: ['PROSPECTOR', 'HEALTH', 'PET'] },
-    create: {
-      name: 'Sede Principal HQ',
-      slug: 'sede-principal',
+  const hq = await prisma.organization.upsert({
+    where: { slug: 'nexthub-core' },
+    update: { 
       enabledModules: ['PROSPECTOR', 'HEALTH', 'PET'],
+      status: 'ACTIVE'
+    },
+    create: {
+      name: 'NextHub Core',
+      slug: 'nexthub-core',
+      enabledModules: ['PROSPECTOR', 'HEALTH', 'PET'],
+      status: 'ACTIVE',
       members: {
-        create: { userId: admin.id, role: 'OWNER' }
-      }
-    }
+        create: {
+          userId: admin.id,
+          role: 'OWNER',
+        },
+      },
+    },
   });
 
-  await prisma.unit.upsert({
-    where: { id: 'unit-master' },
+  const unitHq = await prisma.unit.upsert({
+    where: { id: 'unit-hq-master' },
     update: {},
     create: {
-      id: 'unit-master',
-      name: 'Unidade Central HQ',
-      organizationId: orgHq.id,
+      id: 'unit-hq-master',
+      name: 'Sede Principal HQ',
+      organizationId: hq.id,
       type: 'CORE',
       userPermissions: {
-        create: { userId: admin.id, organizationId: orgHq.id, role: 'ORGANIZATION_ADMIN' }
+        create: {
+          userId: admin.id,
+          organizationId: hq.id,
+          role: 'ORGANIZATION_ADMIN'
+        }
       }
     }
   });
 
-  // 2. CLIENTE A: Clínica A
-  const userAdminA = await prisma.user.upsert({
+  // 2. CLIENTE A: Clínica A [HEALTH]
+  const adminA = await prisma.user.upsert({
     where: { email: 'admin@clinica-a.com' },
     update: {},
-    create: { email: 'admin@clinica-a.com', name: 'Gestor Clínica A' }
+    create: { email: 'admin@clinica-a.com', name: 'Dr. Silva (Admin A)' }
   });
 
-  const userRecepcaoA = await prisma.user.upsert({
+  const recepcaoA = await prisma.user.upsert({
     where: { email: 'recepcao@clinica-a.com' },
     update: {},
-    create: { email: 'recepcao@clinica-a.com', name: 'Recepcionista A' }
+    create: { email: 'recepcao@clinica-a.com', name: 'Maria (Recepção A)' }
   });
 
   const orgA = await prisma.organization.upsert({
@@ -64,8 +75,8 @@ async function main() {
       members: {
         createMany: {
           data: [
-            { userId: userAdminA.id, role: 'ADMIN' },
-            { userId: userRecepcaoA.id, role: 'MEMBER' }
+            { userId: adminA.id, role: 'ADMIN' },
+            { userId: recepcaoA.id, role: 'MEMBER' }
           ]
         }
       }
@@ -80,75 +91,51 @@ async function main() {
       userPermissions: {
         createMany: {
           data: [
-            { userId: userAdminA.id, organizationId: orgA.id, role: 'UNIT_MANAGER' },
-            { userId: userRecepcaoA.id, organizationId: orgA.id, role: 'OPERATIONAL_STAFF' }
+            { userId: adminA.id, organizationId: orgA.id, role: 'UNIT_MANAGER' },
+            { userId: recepcaoA.id, organizationId: orgA.id, role: 'OPERATIONAL_STAFF' }
           ]
         }
       }
     }
   });
 
-  // 3. CLIENTE B: Clínica B -> [PROSPECTOR, HEALTH]
-  const orgB = await prisma.organization.upsert({
-    where: { slug: 'clinica-b' },
-    update: { enabledModules: ['PROSPECTOR', 'HEALTH'] },
+  // 3. SUSPENDED CLIENT: Clínica em Atraso [HEALTH]
+  const userSuspended = await prisma.user.upsert({
+    where: { email: 'financeiro@atraso.com' },
+    update: {},
+    create: { email: 'financeiro@atraso.com', name: 'Devedor' }
+  });
+
+  const orgSuspended = await prisma.organization.upsert({
+    where: { slug: 'clinica-suspendida' },
+    update: { status: 'SUSPENDED', enabledModules: ['HEALTH'] },
     create: {
-      name: 'Clínica B',
-      slug: 'clinica-b',
-      enabledModules: ['PROSPECTOR', 'HEALTH']
+      name: 'Clínica Inadimplente',
+      slug: 'clinica-suspendida',
+      status: 'SUSPENDED',
+      enabledModules: ['HEALTH'],
+      members: {
+        create: { userId: userSuspended.id, role: 'OWNER' }
+      }
     }
   });
 
   await prisma.unit.create({
     data: {
-      name: 'Sede Clínica B',
-      organizationId: orgB.id,
-      type: 'HEALTH'
+      name: 'Unidade Bloqueada',
+      organizationId: orgSuspended.id,
+      type: 'HEALTH',
+      userPermissions: {
+        create: {
+          userId: userSuspended.id,
+          organizationId: orgSuspended.id,
+          role: 'ORGANIZATION_ADMIN'
+        }
+      }
     }
   });
 
-  // 4. CLIENTE C: Clínica Otorrino -> [HEALTH]
-  await prisma.organization.upsert({
-    where: { slug: 'clinica-otorrino' },
-    update: { enabledModules: ['HEALTH'] },
-    create: {
-      name: 'Clínica Otorrino',
-      slug: 'clinica-otorrino',
-      enabledModules: ['HEALTH']
-    }
-  });
-
-  // 5. CLIENTE D: Saúde Pet -> [PET]
-  const orgD = await prisma.organization.upsert({
-    where: { slug: 'saude-pet' },
-    update: { enabledModules: ['PET'] },
-    create: {
-      name: 'Saúde Pet',
-      slug: 'saude-pet',
-      enabledModules: ['PET']
-    }
-  });
-
-  await prisma.unit.create({
-    data: {
-      name: 'Matriz Saúde Pet',
-      organizationId: orgD.id,
-      type: 'PET'
-    }
-  });
-
-  // 6. CLIENTE E: Pet Dirceu -> [PET]
-  await prisma.organization.upsert({
-    where: { slug: 'pet-dirceu' },
-    update: { enabledModules: ['PET'] },
-    create: {
-      name: 'Pet Dirceu',
-      slug: 'pet-dirceu',
-      enabledModules: ['PET']
-    }
-  });
-
-  console.log('Final multi-level seed applied.');
+  console.log('Seed v4 applied successfully.');
 }
 
 main()

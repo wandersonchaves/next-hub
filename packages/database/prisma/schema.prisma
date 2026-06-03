@@ -19,11 +19,11 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  memberships     Member[]
-  invitesSent     Invite[]             @relation("InviteSender")
-  auditLogs       AuditLog[]
-  accounts        Account[]
-  unitPermissions UserUnitPermission[]
+  memberships       Member[]
+  invitesSent       Invite[]               @relation("InviteSender")
+  auditLogs         AuditLog[]
+  accounts          Account[]
+  organizationUnits UserOrganizationUnit[]
 }
 
 enum UnitType {
@@ -52,7 +52,7 @@ model Unit {
   appointments    Appointment[]
   suggestedMessages SuggestedMessage[]
   interactions    Interaction[]
-  userPermissions UserUnitPermission[]
+  userPermissions UserOrganizationUnit[]
   procedures      Procedure[]
   pets            Pet[]
   petServices     PetService[]
@@ -60,7 +60,7 @@ model Unit {
   @@index([organizationId])
 }
 
-model UserUnitPermission {
+model UserOrganizationUnit {
   id             String   @id @default(cuid())
   userId         String
   organizationId String
@@ -77,6 +77,31 @@ model UserUnitPermission {
   @@index([userId])
   @@index([unitId])
   @@index([organizationId])
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  REVOKED
+  EXPIRED
+}
+
+model UserInvitation {
+  id             String           @id @default(cuid())
+  email          String
+  token          String           @unique
+  status         InvitationStatus @default(PENDING)
+  expiresAt      DateTime
+  organizationId String
+  unitIds        String[]         @default([])
+  role           UnitRole         @default(OPERATIONAL_STAFF)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, email])
+  @@index([token])
 }
 
 model Procedure {
@@ -168,6 +193,7 @@ model Lead {
 
   unit              Unit               @relation(fields: [unitId], references: [id], onDelete: Cascade)
   organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  pipeline          LeadPipeline?
   appointments      Appointment[]
   suggestedMessages SuggestedMessage[]
   interactions      Interaction[]
@@ -294,7 +320,9 @@ model Organization {
   logoUrl    String?
   status     OrganizationStatus @default(ACTIVE)
   automationMode AutomationMode     @default(COPILOT)
+  enableAutopilot Boolean           @default(false)
   usageCount     Int                @default(0)
+  metadata       Json?              @default("{}")
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
 
@@ -311,8 +339,10 @@ model Organization {
   installedExtensions InstalledExtension[]
   workflows           Workflow[]
   units               Unit[]
-  userUnitPermissions UserUnitPermission[]
+  userOrganizationUnits UserOrganizationUnit[]
+  userInvitations     UserInvitation[]
   leads               Lead[]
+  leadPipelines       LeadPipeline[]
   appointments        Appointment[]
   suggestedMessages   SuggestedMessage[]
   interactions        Interaction[]
@@ -320,6 +350,21 @@ model Organization {
   pets                Pet[]
   petServices         PetService[]
 }
+
+model LeadPipeline {
+  id             String   @id @default(cuid())
+  leadId         String   @unique
+  stage          String   // e.g., 'REUNIAO_MARCADA'
+  estimatedValue Decimal  @default(0)
+  organizationId String
+  updatedAt      DateTime @updatedAt
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
 
 model Subscription {
   id                   String             @id @default(cuid())
