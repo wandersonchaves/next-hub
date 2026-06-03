@@ -39,7 +39,10 @@ export class DataArchiverWorker extends WorkerHost {
       return acc;
     }, {} as Record<string, any[]>);
 
-    for (const [orgId, interactions] of Object.entries(groupedByTenant)) {
+    // FIX: Using explicit type for entries to avoid 'unknown' type errors
+    const entries = Object.entries(groupedByTenant) as [string, any[]][];
+
+    for (const [orgId, interactions] of entries) {
       try {
         this.logger.log(`Archiving ${interactions.length} interactions for Tenant ${orgId}`);
 
