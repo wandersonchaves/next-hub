@@ -4,11 +4,12 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "build:railway": "pnpm db:generate && turbo run build",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "clean": "turbo run clean && rm -rf .turbo apps/web/.next apps/api/dist apps/gateway/dist packages/database/dist",
     "clean:force": "pnpm clean && rm -rf node_modules",
-    "db:generate": "pnpm --filter @enterprise/database db:generate",
+    "db:generate": "prisma generate --schema=packages/database/prisma/schema.prisma",
     "db:push": "pnpm --filter @enterprise/database db:push",
     "db:seed": "pnpm --filter @enterprise/database db:seed"
   },
