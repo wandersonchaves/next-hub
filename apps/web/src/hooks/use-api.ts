@@ -24,6 +24,15 @@ export function useApi() {
 
     if (orgId && !headers.has('x-organization-id')) {
       headers.set('x-organization-id', orgId);
+      headers.set('x-company-id', orgId); // Support for both aliases
+    }
+
+    // Inject Unit ID if present in localStorage
+    if (typeof window !== 'undefined') {
+      const unitId = localStorage.getItem('x-unit-id');
+      if (unitId && !headers.has('x-unit-id')) {
+        headers.set('x-unit-id', unitId);
+      }
     }
 
     const response = await fetch(`${API_URL}${endpoint}`, {
@@ -32,9 +41,9 @@ export function useApi() {
     });
 
     if (response.status === 402) {
-      // Tenant Suspended - Redirect to Billing/Suspended page
+      // Tenant Suspended or Read-Only mutation blocked
       router.push(`/${orgSlug}/billing/suspended`);
-      throw new Error('Assinatura Suspensa');
+      throw new Error('Assinatura Suspensa ou Pendência Financeira');
     }
 
     if (!response.ok) {

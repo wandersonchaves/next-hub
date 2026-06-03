@@ -46,8 +46,7 @@ export default function LeadChatPage() {
 
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sending, setSending] = useState(false);
-  const [generating, setGenerateLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputText, setInputText] = useState("");
 
   const loadLead = useCallback(async () => {
@@ -64,7 +63,7 @@ export default function LeadChatPage() {
 
   useEffect(() => {
     loadLead();
-    const interval = setInterval(loadLead, 5000); // Polling faster for active chat
+    const interval = setInterval(loadLead, 5000); 
     return () => clearInterval(interval);
   }, [loadLead]);
 
@@ -75,8 +74,8 @@ export default function LeadChatPage() {
   }, [lead?.interactions]);
 
   const handleSendMessage = async () => {
-    if (!lead || !inputText.trim()) return;
-    setSending(true);
+    if (!lead || !inputText.trim() || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       await fetcher(`/modules/prospector/leads/${lead.id}/send-message`, {
         method: 'POST',
@@ -87,13 +86,13 @@ export default function LeadChatPage() {
     } catch (err) {
       console.error("Failed to send message", err);
     } finally {
-      setSending(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleGeneratePitch = async () => {
-    if (!lead) return;
-    setGenerateLoading(true);
+    if (!lead || isSubmitting) return;
+    setIsSubmitting(true);
     try {
       const res = await fetcher<{ suggestion: string }>(`/modules/prospector/leads/${lead.id}/generate-pitch`, {
         method: 'POST'
@@ -103,7 +102,7 @@ export default function LeadChatPage() {
     } catch (err) {
       console.error("Generation failed", err);
     } finally {
-      setGenerateLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -195,11 +194,11 @@ export default function LeadChatPage() {
             </div>
             <Button 
               onClick={handleSendMessage}
-              disabled={sending || !inputText.trim()}
+              disabled={isSubmitting || !inputText.trim()}
               size="icon" 
               className="h-12 w-12 rounded-2xl shrink-0 shadow-lg bg-primary hover:bg-primary/90 shadow-primary/20"
             >
-              {sending ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
+              {isSubmitting ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} />}
             </Button>
           </div>
         </div>
@@ -263,14 +262,14 @@ export default function LeadChatPage() {
             
             <Button 
               onClick={handleGeneratePitch} 
-              disabled={generating}
+              disabled={isSubmitting}
               variant={lead.status === 'STALE' ? 'destructive' : 'default'}
               className={cn(
                 "w-full gap-2 h-10 text-[10px] font-black uppercase shadow-lg transition-all rounded-xl",
-                lead.status !== 'STALE' && "animate-pulse hover:animate-none"
+                (lead.status !== 'STALE' && !isSubmitting) && "animate-pulse hover:animate-none"
               )}
             >
-              {generating ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className={lead.status === 'STALE' ? "text-white" : "text-yellow-400"} />}
+              {isSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} className={lead.status === 'STALE' ? "text-white" : "text-yellow-400"} />}
               {lead.status === 'STALE' ? 'Sugestão de Retratação' : 'Copiloto: Sugerir Resposta'}
             </Button>
           </div>
