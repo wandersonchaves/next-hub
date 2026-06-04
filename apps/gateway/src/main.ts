@@ -18,7 +18,7 @@ async function bootstrap() {
     }),
   );
 
-  const port = process.env.PORT || 3000;
+  const port = process.env.PORT || 4000;
   const host = '0.0.0.0';
   await app.listen(port, host);
   console.log(`Gateway is running on: http://localhost:${port} (Binding: ${host})`);
