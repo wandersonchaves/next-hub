@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "if [ -f .next/standalone/apps/web/server.js ]; then node .next/standalone/apps/web/server.js; else next start; fi",
     "lint": "next lint"
   },
   "dependencies": {
