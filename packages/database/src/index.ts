@@ -1,4 +1,4 @@
-export * from './generated/client/index.js'
+export * from './generated/client'
 export type {
   Organization,
   User,
@@ -22,8 +22,8 @@ export type {
   Role,
   Lead,
   Appointment
-} from './generated/client/index.js'
-import { PrismaClient } from './generated/client/index.js'
+} from './generated/client'
+import { PrismaClient } from './generated/client'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { PrismaPg } from '@prisma/adapter-pg'
 import pg from 'pg'
@@ -61,12 +61,12 @@ export const prisma = new PrismaClient({
 
         // Models that are unit-specific (in addition to being organization-specific)
         const unitModels = [
-          'Lead', 
-          'Appointment', 
-          'SuggestedMessage', 
-          'Interaction', 
-          'Procedure', 
-          'Pet', 
+          'Lead',
+          'Appointment',
+          'SuggestedMessage',
+          'Interaction',
+          'Procedure',
+          'Pet',
           'PetService',
           'LeadPipeline'
         ]
