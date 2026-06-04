@@ -1,4 +1,4 @@
-# Enterprise SaaS: Clean Architecture & Performance Manifesto
+# Next Hub: Clean Architecture & Performance Manifesto
 
 Este documento define as diretrizes arquiteturais para garantir que o sistema seja sustentável (Clean) e extremamente rápido (High Performance).
 

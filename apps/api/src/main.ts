@@ -61,8 +61,8 @@ async function bootstrap() {
   app.useGlobalInterceptors(new TenantInterceptor());
 
   const config = new DocumentBuilder()
-    .setTitle('Enterprise SaaS Public API')
-    .setDescription('The public API for integrating with the Enterprise SaaS platform')
+    .setTitle('Next Hub Public API')
+    .setDescription('The public API for integrating with the Next Hub platform')
     .setVersion('1.0')
     .addApiKey({ type: 'apiKey', name: 'x-api-key', in: 'header' }, 'api-key')
     .build();

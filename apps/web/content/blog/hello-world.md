@@ -1,7 +1,7 @@
 ---
-title: "Welcome to our Enterprise SaaS"
+title: "Welcome to our Next Hub"
 date: "2024-04-16"
-excerpt: "Learn how to build scalable products with our starter kit."
+excerpt: "Learn how to build scalable products with our saas."
 ---
 
 # Welcome!

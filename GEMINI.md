@@ -1,10 +1,10 @@
-# 🚀 Enterprise SaaS Starter Kit - Gemini Context
+# 🚀 Next Hub - Gemini Context
 
 This document serves as the foundational instructional context for Gemini CLI interactions with this repository. It outlines the project's purpose, architecture, development workflows, and engineering standards.
 
 ## 📖 Project Overview
 
-The **Enterprise SaaS Starter Kit** is a high-performance, agnostic foundation for B2B SaaS applications. It is built with a focus on **Clean Architecture**, **Scalability**, and a superior **Developer Experience (DX)**.
+The **Next Hub** is a high-performance, agnostic foundation for B2B SaaS applications. It is built with a focus on **Clean Architecture**, **Scalability**, and a superior **Developer Experience (DX)**.
 
 ### Core Tech Stack
 - **Monorepo:** Managed by `pnpm` workspaces and `Turborepo`.

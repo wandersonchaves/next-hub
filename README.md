@@ -1,4 +1,4 @@
-# 🚀 Enterprise SaaS Starter Kit
+# 🚀 Next Hub
 
 A base definitiva, agnóstica e de alto desempenho para o seu próximo software SaaS B2B. Construído com foco em **Clean Architecture**, **Escalabilidade** e **Experiência do Desenvolvedor**.
 

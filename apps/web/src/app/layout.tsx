@@ -10,8 +10,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: {
-    default: "Enterprise SaaS Starter Kit",
-    template: "%s | Enterprise SaaS"
+    default: "Next Hub",
+    template: "%s | Next Hub"
   },
   description: "A base definitiva para SaaS B2B agnóstico e de alto desempenho.",
   icons: {
