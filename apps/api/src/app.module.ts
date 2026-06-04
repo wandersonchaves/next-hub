@@ -1,5 +1,5 @@
 import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './modules/nexthub/health/health.controller';
@@ -70,10 +70,23 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
       ttl: 60000,
       limit: 100,
     }]),
-    BullModule.forRoot({
-      connection: {
-        host: process.env.REDIS_HOST || 'localhost',
-        port: parseInt(process.env.REDIS_PORT || '6379'),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const password = config.get<string>('REDIS_PASSWORD');
+        return {
+          connection: {
+            host: config.get<string>('REDIS_HOST', '127.0.0.1'),
+            port: config.get<number>('REDIS_PORT', 6379),
+            ...(password ? { password } : {}),
+            // Handle connection drops during cold-starts or network blips
+            maxRetriesPerRequest: null,
+            retryStrategy: (times) => {
+              const delay = Math.min(times * 100, 3000);
+              return delay;
+            },
+          },
+        };
       },
     }),
     BullModule.registerQueue(
@@ -82,12 +95,20 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     PrometheusModule.register(),
     CacheModule.registerAsync({
       isGlobal: true,
-      useFactory: async () => ({
-        store: await redisStore({
-          url: `redis://${process.env.REDIS_HOST || 'localhost'}:${process.env.REDIS_PORT || '6379'}`,
-          ttl: 600,
-        }),
-      }),
+      inject: [ConfigService],
+      useFactory: async (config: ConfigService) => {
+        const password = config.get<string>('REDIS_PASSWORD');
+        const host = config.get<string>('REDIS_HOST', '127.0.0.1');
+        const port = config.get<number>('REDIS_PORT', 6379);
+        
+        return {
+          store: await redisStore({
+            url: `redis://${host}:${port}`,
+            ...(password ? { password } : {}),
+            ttl: 600,
+          }),
+        };
+      },
     }),
   ],
   controllers: [AppController, HealthController],
@@ -100,7 +121,6 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     PermissionsGuard,
     ModuleAccessGuard,
     MultiLevelAuthGuard,
-    DataArchiverWorker,
   ],
 })
 export class AppModule implements OnModuleDestroy {
