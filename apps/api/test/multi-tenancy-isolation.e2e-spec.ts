@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe, CanActivate, ExecutionContext } from 
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { ClerkGuard } from '../src/common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../src/common/guards/multi-level-auth.guard';
 import { SaaSControlService } from '../src/modules/nexthub/saas-control/saas-control.service';
 import * as jwt from 'jsonwebtoken';
 
@@ -23,7 +23,7 @@ describe('Multi-Tenancy and Module Isolation (e2e)', () => {
     validateModuleAccess: jest.fn(),
   };
 
-  const mockClerkGuard: CanActivate = {
+  const mockMultiLevelAuthGuard: CanActivate = {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const authHeader = req.headers.authorization;
@@ -55,7 +55,7 @@ describe('Multi-Tenancy and Module Isolation (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideGuard(ClerkGuard).useValue(mockClerkGuard)
+      .overrideGuard(MultiLevelAuthGuard).useValue(mockMultiLevelAuthGuard)
       .overrideProvider(SaaSControlService).useValue(mockSaaSControlService)
       .compile();
 

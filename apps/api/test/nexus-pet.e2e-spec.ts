@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe, CanActivate, ExecutionContext } from 
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { ClerkGuard } from '../src/common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../src/common/guards/multi-level-auth.guard';
 import { AIOrchestratorEngine } from '../src/common/engines/ai-orchestrator.engine';
 import { OmniChannelEngine } from '../src/common/engines/omni-channel.engine';
 import * as jwt from 'jsonwebtoken';
@@ -26,7 +26,7 @@ describe('Nexus Pet (e2e)', () => {
     sendMessage: jest.fn().mockResolvedValue(undefined)
   };
 
-  const mockClerkGuard: CanActivate = {
+  const mockMultiLevelAuthGuard: CanActivate = {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const user = await prisma.client.user.findUnique({
@@ -44,7 +44,7 @@ describe('Nexus Pet (e2e)', () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideGuard(ClerkGuard).useValue(mockClerkGuard)
+      .overrideGuard(MultiLevelAuthGuard).useValue(mockMultiLevelAuthGuard)
       .overrideProvider(AIOrchestratorEngine).useValue(mockAI)
       .overrideProvider(OmniChannelEngine).useValue(mockOmni)
       .compile();

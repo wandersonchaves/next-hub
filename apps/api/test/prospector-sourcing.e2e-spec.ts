@@ -3,7 +3,7 @@ import { INestApplication, ValidationPipe, CanActivate, ExecutionContext } from 
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { ClerkGuard } from '../src/common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../src/common/guards/multi-level-auth.guard';
 import { AIOrchestratorEngine } from '../src/common/engines/ai-orchestrator.engine';
 import * as jwt from 'jsonwebtoken';
 
@@ -29,7 +29,7 @@ describe('Prospector Sourcing (e2e)', () => {
     })
   };
 
-  const mockClerkGuard: CanActivate = {
+  const mockMultiLevelAuthGuard: CanActivate = {
     canActivate: async (context: ExecutionContext) => {
       const req = context.switchToHttp().getRequest();
       const user = await prisma.client.user.findUnique({
@@ -49,7 +49,7 @@ describe('Prospector Sourcing (e2e)', () => {
     })
       .overrideProvider('ILeadSourceProvider').useValue(mockLeadSourceProvider)
       .overrideProvider(AIOrchestratorEngine).useValue(mockAI)
-      .overrideGuard(ClerkGuard).useValue(mockClerkGuard)
+      .overrideGuard(MultiLevelAuthGuard).useValue(mockMultiLevelAuthGuard)
       .compile();
 
     app = moduleFixture.createNestApplication();
