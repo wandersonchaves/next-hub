@@ -18,7 +18,7 @@ import {
   ChevronDown
 } from "lucide-react";
 
-import { UserButton, OrganizationSwitcher, useAuth, useUser } from "@clerk/nextjs";
+import { useUser, useAuth } from "@/providers/auth-provider";
 import { useTenantConfig, VerticalModule } from "@/hooks/use-tenant-config";
 
 interface AppShellProps {
@@ -29,12 +29,12 @@ interface AppShellProps {
 export function AppShell({ children, orgSlug }: AppShellProps) {
   const pathname = usePathname();
   const { config, loading, selectUnit, activeUnitId } = useTenantConfig();
-  const { orgRole } = useAuth();
+  const { orgRole, logout } = useAuth();
   const { user } = useUser();
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
 
   // Admin Master Bypass
-  const isMasterAdmin = orgRole === 'admin' || orgRole === 'org:admin' || user?.emailAddresses.some(e => e.emailAddress.endsWith('@nexthub.com'));
+  const isMasterAdmin = orgRole === 'admin' || orgRole === 'org:admin' || (user?.email && user.email.endsWith('@nexthub.com'));
 
   const verticalItems = [
     { name: "Prospector Omni", href: `/${orgSlug}/prospector`, icon: Zap, module: 'PROSPECTOR', emoji: "🚀" },
@@ -68,18 +68,9 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
           <div className="space-y-4">
              <div>
                 <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest ml-1 mb-2 opacity-50 italic">Empresa</p>
-                <OrganizationSwitcher 
-                    hidePersonal
-                    afterSelectOrganizationUrl="/dashboard"
-                    appearance={{
-                      elements: {
-                          rootBox: "w-full",
-                          organizationSwitcherTrigger: "w-full bg-muted/30 border border-border/50 hover:border-primary/50 transition-all px-4 py-3 rounded-2xl",
-                          organizationPreviewTextContainer: "text-left",
-                          organizationPreviewMainIdentifier: "text-sm font-bold tracking-tight",
-                      }
-                    }}
-                />
+                <div className="w-full bg-muted/30 border border-border/50 transition-all px-4 py-3 rounded-2xl text-left">
+                  <span className="text-sm font-bold tracking-tight">{config?.organizationId || 'Minha Empresa'}</span>
+                </div>
              </div>
 
              {config?.units && config.units.length > 0 && (
@@ -156,17 +147,9 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
           })}
         </nav>
 
-        <div className="p-6 border-t border-border/50 bg-muted/20">
-          <UserButton 
-            showName 
-            appearance={{
-              elements: {
-                userButtonBox: "flex-row-reverse w-full gap-4",
-                userButtonOuterIdentifier: "font-black text-xs uppercase tracking-tight text-foreground",
-                userButtonTrigger: "hover:scale-105 transition-transform"
-              }
-            }}
-          />
+        <div className="p-6 border-t border-border/50 bg-muted/20 flex justify-between items-center">
+          <div className="font-black text-xs uppercase tracking-tight text-foreground">{user?.name || user?.email}</div>
+          <button onClick={logout} className="text-xs font-bold text-rose-500 hover:underline">Sair</button>
         </div>
       </aside>
 

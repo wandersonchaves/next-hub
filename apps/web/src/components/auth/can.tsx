@@ -12,11 +12,11 @@ interface CanProps {
 }
 
 export function Can({ I, children, fallback = null }: CanProps) {
-  const { user, isLoading } = useAuth();
+  const { orgRole, isLoaded } = useAuth();
   
-  if (isLoading) return null;
+  if (!isLoaded) return null;
   
-  const userRole = user?.role as Role;
+  const userRole = orgRole as Role;
   const allowedRoles = Array.isArray(I) ? I : [I];
 
   // Role Hierarchy

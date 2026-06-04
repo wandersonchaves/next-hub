@@ -3,9 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/providers/theme-provider";
-import { AuthProvider } from "@/providers/auth-provider";
-
-import { ClerkProvider } from "@clerk/nextjs";
+import { NativeAuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "sonner";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -27,7 +25,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
+    <NativeAuthProvider>
       <html lang="pt-BR" suppressHydrationWarning>
         <body className={cn(inter.className, "antialiased")}>
           <ThemeProvider
@@ -36,14 +34,12 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
-            <AuthProvider>
               {children}
-            </AuthProvider>
             <Toaster richColors position="top-right" />
           </ThemeProvider>
         </body>
       </html>
-    </ClerkProvider>
+    </NativeAuthProvider>
   );
 }
 

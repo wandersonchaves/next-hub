@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { useTenantConfig, VerticalModule } from "@/hooks/use-tenant-config";
 import { cn } from "@/lib/utils";
-import { useUser, useAuth } from "@clerk/nextjs";
+import { useUser, useAuth } from "@/providers/auth-provider";
 
 export default function WelcomeHubPage() {
   const { orgSlug } = useParams();
@@ -24,7 +24,7 @@ export default function WelcomeHubPage() {
   const { orgRole } = useAuth();
 
   // Admin Master Bypass
-  const isMasterAdmin = orgRole === 'admin' || orgRole === 'org:admin' || user?.emailAddresses.some(e => e.emailAddress.endsWith('@nexthub.com'));
+  const isMasterAdmin = orgRole === 'admin' || orgRole === 'org:admin' || (user?.email && user.email.endsWith('@nexthub.com'));
 
   const verticals = [
     { 
@@ -86,7 +86,7 @@ export default function WelcomeHubPage() {
         </div>
         <div>
            <h1 className="text-4xl md:text-6xl font-black tracking-tighter text-foreground mb-2">
-             Bem-vindo, <span className="text-primary italic">{user?.firstName || 'Líder'}</span>!
+             Bem-vindo, <span className="text-primary italic">{user?.name?.split(' ')[0] || 'Líder'}</span>!
            </h1>
            <p className="text-lg text-muted-foreground font-medium max-w-2xl leading-relaxed">
              {isMasterAdmin 
