@@ -1,7 +1,7 @@
 import { Controller, Post, Body, UseGuards, Get, Headers } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { CreateOperationalAppointmentUseCase } from '../../application/use-cases/create-operational-appointment.use-case';
-import { ClerkGuard } from '../../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { TenantContextGuard } from '../../../../common/guards/tenant-context.guard';
@@ -14,7 +14,7 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 @ApiTags('Nexus Health')
 @Controller('modules/health')
 @RequireModule('HEALTH')
-@UseGuards(ClerkGuard, MembershipGuard, RolesGuard, TenantContextGuard, ModuleAccessGuard)
+@UseGuards(MultiLevelAuthGuard, MembershipGuard, RolesGuard, TenantContextGuard, ModuleAccessGuard)
 export class HealthManagementController {
   constructor(
     private readonly prisma: PrismaService,

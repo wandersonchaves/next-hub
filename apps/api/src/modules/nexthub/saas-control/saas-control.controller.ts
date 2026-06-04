@@ -1,6 +1,6 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import { ClerkGuard } from '../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../common/guards/membership.guard';
 import { SaaSControlService, TenantSaaSSnapshot } from './saas-control.service';
 import { CurrentOrg } from '../../../common/decorators/org.decorator';
@@ -8,7 +8,7 @@ import { CurrentUser } from '../../../common/decorators/user.decorator';
 
 @ApiTags('Core SaaS Control')
 @Controller('core/saas-control')
-@UseGuards(ClerkGuard, MembershipGuard)
+@UseGuards(MultiLevelAuthGuard, MembershipGuard)
 export class SaaSControlController {
   constructor(private readonly saasControl: SaaSControlService) {}
 

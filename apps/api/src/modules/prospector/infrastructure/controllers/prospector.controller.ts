@@ -6,7 +6,7 @@ import { HandleIncomingMessageUseCase } from '../../application/use-cases/handle
 import { SourceLeadsUseCase } from '../../application/use-cases/source-leads.use-case';
 import { GenerateSalesPitchUseCase } from '../../application/use-cases/generate-sales-pitch.use-case';
 import { SendOutboundMessageUseCase } from '../../application/use-cases/send-outbound-message.use-case';
-import { ClerkGuard } from '../../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { TenantContextGuard } from '../../../../common/guards/tenant-context.guard';
 import { ProspectorAdminGuard } from '../../../../common/guards/prospector-admin.guard';
@@ -20,7 +20,7 @@ import { normalizePhone } from '../../../../common/utils/phone-normalization';
 @ApiTags('Nexus Prospector')
 @Controller('modules/prospector')
 @RequireModule('PROSPECTOR')
-@UseGuards(ClerkGuard, MembershipGuard, TenantContextGuard, ProspectorAdminGuard, ModuleAccessGuard)
+@UseGuards(MultiLevelAuthGuard, MembershipGuard, TenantContextGuard, ProspectorAdminGuard, ModuleAccessGuard)
 export class ProspectorController {
   constructor(
     private readonly prisma: PrismaService,

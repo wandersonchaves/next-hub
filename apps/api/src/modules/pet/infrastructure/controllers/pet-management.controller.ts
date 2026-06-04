@@ -1,7 +1,7 @@
 import { Controller, Post, Body, UseGuards, Get, Headers, Query, Inject } from '@nestjs/common';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { CheckPetRecurrenceUseCase } from '../../application/use-cases/check-pet-recurrence.use-case';
-import { ClerkGuard } from '../../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { RolesGuard } from '../../../../common/guards/roles.guard';
 import { TenantContextGuard } from '../../../../common/guards/tenant-context.guard';
@@ -15,7 +15,7 @@ import type { PetRepository } from '../../application/ports/pet.repository';
 @ApiTags('Nexus Pet')
 @Controller('modules/pet')
 @RequireModule('PET')
-@UseGuards(ClerkGuard, MembershipGuard, RolesGuard, TenantContextGuard, ModuleAccessGuard)
+@UseGuards(MultiLevelAuthGuard, MembershipGuard, RolesGuard, TenantContextGuard, ModuleAccessGuard)
 export class PetManagementController {
   constructor(
     private readonly prisma: PrismaService,

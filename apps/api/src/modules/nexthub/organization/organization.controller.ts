@@ -1,14 +1,14 @@
 import { Controller, Get, Post, Patch, Body, Param, UseGuards } from '@nestjs/common';
 import { OrganizationService } from './organization.service';
 import type { Role, User, Organization } from '@enterprise/database';
-import { ClerkGuard } from '../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../common/guards/membership.guard';
 import { CurrentUser } from '../../../common/decorators/user.decorator';
 import { CurrentOrg } from '../../../common/decorators/org.decorator';
 import { Roles } from '../../../common/decorators/roles.decorator';
 
 @Controller('organizations')
-@UseGuards(ClerkGuard)
+@UseGuards(MultiLevelAuthGuard)
 export class OrganizationController {
   constructor(private readonly organizationService: OrganizationService) {}
 

@@ -1,12 +1,12 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
 import { AuditLogsService } from './audit-logs.service';
-import { ClerkGuard } from '../../../common/guards/clerk.guard';
+import { MultiLevelAuthGuard } from '../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../common/guards/membership.guard';
 import { CurrentOrg } from '../../../common/decorators/org.decorator';
 import type { Organization } from '@enterprise/database';
 
 @Controller('audit-logs')
-@UseGuards(ClerkGuard, MembershipGuard)
+@UseGuards(MultiLevelAuthGuard, MembershipGuard)
 export class AuditLogsController {
   constructor(private readonly auditLogsService: AuditLogsService) {}
 
