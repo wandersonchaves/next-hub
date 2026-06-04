@@ -1,23 +1,24 @@
-import { useAuth } from "@clerk/nextjs";
+import { useAuth } from "../providers/auth-provider";
 import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3001';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3000';
 
 export function useApi() {
   const { getToken, orgId } = useAuth();
   const router = useRouter();
-  const { orgSlug } = useParams() as { orgSlug: string };
+  const params = useParams() || {};
+  const orgSlug = params.orgSlug as string | undefined;
 
   const fetcher = useCallback(async <T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> => {
     const token = await getToken();
-    
+
     const headers = new Headers(options.headers);
     headers.set('Content-Type', 'application/json');
-    
+
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
@@ -42,7 +43,9 @@ export function useApi() {
 
     if (response.status === 402) {
       // Tenant Suspended or Read-Only mutation blocked
-      router.push(`/${orgSlug}/billing/suspended`);
+      if (orgSlug) {
+        router.push(`/${orgSlug}/billing/suspended`);
+      }
       throw new Error('Assinatura Suspensa ou Pendência Financeira');
     }
 
@@ -56,3 +59,4 @@ export function useApi() {
 
   return { fetcher };
 }
+
