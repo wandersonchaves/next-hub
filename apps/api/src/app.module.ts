@@ -35,7 +35,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { TenantContextModule } from './common/utils/tenant-context/tenant-context.module';
 import { EnginesModule } from './common/engines/engines.module';
 import { SaaSControlModule } from './modules/nexthub/saas-control/saas-control.module';
-import { ClerkGuard } from './common/guards/clerk.guard';
+import { AuthModule } from './modules/nexthub/auth/auth.module';
 import { MembershipGuard } from './common/guards/membership.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { UnitIsolationGuard } from './common/guards/unit-isolation.guard';
@@ -46,6 +46,7 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
 
 @Module({
   imports: [
+    AuthModule,
     PrismaModule,
     TenantContextModule,
     EnginesModule,
@@ -114,7 +115,6 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
   controllers: [AppController, HealthController],
   providers: [
     AppService,
-    ClerkGuard,
     MembershipGuard,
     RolesGuard,
     UnitIsolationGuard,
