@@ -4,6 +4,8 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   output: 'standalone',
+  // Ensure Next.js trusts the Railway proxy headers for HTTPS redirection and client IP detection
+  poweredByHeader: false,
   logging: {
     fetches: {
       fullUrl: true,
