@@ -1,6 +1,7 @@
 import { Injectable, Logger, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { PrismaService } from '../../../../prisma/prisma.service';
-import { OmniChannelEngine } from '../../../../common/engines/omni-channel.engine';
 import { UsageMeteringService } from '../../../nexthub/application/usage-metering.service';
 
 export interface SendMessageDto {
@@ -15,8 +16,8 @@ export class SendOutboundMessageUseCase {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly omniChannel: OmniChannelEngine,
     private readonly usageMetering: UsageMeteringService,
+    @InjectQueue('whatsapp-outbound') private readonly outboundQueue: Queue,
   ) {}
 
   async execute(dto: SendMessageDto): Promise<{ status: string }> {
@@ -35,10 +36,15 @@ export class SendOutboundMessageUseCase {
       throw new ForbiddenException('Recurso restrito: Sua conta possui pendências financeiras e o envio de mensagens foi pausado.');
     }
 
-    // 1. Dispatch via WhatsApp
-    await this.omniChannel.sendMessage({
+    // 1. Dispatch via Outbound Queue for robustness and billing interceptor
+    await this.outboundQueue.add('manual-send', {
       to: lead.phone,
       text: text,
+      organizationId
+    }, {
+      removeOnComplete: true,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 }
     });
 
     // 2. Register Interaction and clear pending state

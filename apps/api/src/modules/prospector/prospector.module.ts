@@ -13,6 +13,7 @@ import { GoogleMapsLeadSourceAdapter } from './infrastructure/adapters/google-ma
 import { MockLeadSourceAdapter } from './infrastructure/adapters/mock-lead-source.adapter';
 import { WebSearchContactFinderAdapter } from './infrastructure/adapters/web-search-contact-finder.adapter';
 import { WhatsAppInboundProcessor } from './infrastructure/queue/whatsapp-inbound.processor';
+import { WhatsAppOutboundProcessor } from './infrastructure/queue/whatsapp-outbound.processor';
 import { ProactiveProspectingProcessor } from './infrastructure/queue/proactive-prospecting.processor';
 import { SDRConfigEngine } from './infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from './infrastructure/google-calendar.service';
@@ -20,12 +21,15 @@ import { LeadScoringService } from './application/lead-scoring.service';
 import { AIChatService } from './services/ai-chat.service';
 import { TenantContextModule } from '../../common/utils/tenant-context/tenant-context.module';
 import { CalendarOrchestratorWorker } from '../../common/workers/calendar-orchestrator.worker';
+import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
 
 @Module({
   imports: [
     TenantContextModule,
+    SaaSControlModule,
     BullModule.registerQueue(
       { name: 'whatsapp-inbound' },
+      { name: 'whatsapp-outbound' },
       { name: 'proactive-prospecting' },
       { name: 'calendar-orchestrator' },
     ),
@@ -37,6 +41,7 @@ import { CalendarOrchestratorWorker } from '../../common/workers/calendar-orches
     GenerateSalesPitchUseCase,
     SendOutboundMessageUseCase,
     WhatsAppInboundProcessor,
+    WhatsAppOutboundProcessor,
     ProactiveProspectingProcessor,
     SDRConfigEngine,
     GoogleCalendarService,

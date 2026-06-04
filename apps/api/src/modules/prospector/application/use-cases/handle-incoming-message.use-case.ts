@@ -39,10 +39,12 @@ export class HandleIncomingMessageUseCase {
     private readonly aiOrchestrator: AIOrchestratorEngine,
     private readonly omniChannel: OmniChannelEngine,
     private readonly businessClock: BusinessClockEngine,
+    private readonly googleCalendar: GoogleCalendarService,
     private readonly leadScoring: LeadScoringService,
     private readonly usageMetering: UsageMeteringService,
     private readonly aiChat: AIChatService,
     @InjectQueue('calendar-orchestrator') private readonly calendarQueue: Queue,
+    @InjectQueue('whatsapp-outbound') private readonly outboundQueue: Queue,
   ) {}
 
   async execute(dto: IncomingMessageDto): Promise<void> {
@@ -81,9 +83,8 @@ export class HandleIncomingMessageUseCase {
 
       const accumulatedText = inboundInteractions.map(i => i.content).join('\n');
 
-      // 3. Extraction Phase (NLP DATE FIX & TIMEZONE GUARD)
+      // 3. Extraction Phase
       const now = new Date();
-      // Brazil Timezone Offset (UTC-3)
       const brTime = new Date(now.getTime() - (3 * 3600 * 1000));
       const currentYear = brTime.getUTCFullYear();
       const currentDay = brTime.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'UTC' });
@@ -107,12 +108,10 @@ export class HandleIncomingMessageUseCase {
       });
 
       const data = extraction.extractedData || { intent: 'OTHER', irritationDetected: false, isGatekeeper: false, isPricingQuery: false };
-      
-      // 4. ATOMIC SANITIZATION
       const extractedEmail = data.email ? data.email.trim().toLowerCase() : this.regexExtractEmail(accumulatedText);
       const extractedDate = data.appointmentDate ? new Date(data.appointmentDate) : null;
 
-      // 5. Pipeline State Machine
+      // 4. Pipeline State Machine
       let systemStatus = 'INTERACTION_RECEIVED';
       let newStatus = lead.status;
       let isFinalClosingTriggered = false;
@@ -143,7 +142,7 @@ export class HandleIncomingMessageUseCase {
         }
       }
 
-      // 6. Database Sync
+      // 5. Database Sync
       await this.prisma.client.$transaction(async (tx) => {
         await tx.lead.update({
           where: { id: lead.id },
@@ -156,7 +155,7 @@ export class HandleIncomingMessageUseCase {
         });
       });
 
-      // 7. ASYNC CALENDAR ORCHESTRATION (BullMQ with Meet generation)
+      // 6. ASYNC CALENDAR ORCHESTRATION
       if (isFinalClosingTriggered && (extractedEmail || lead.email) && extractedDate) {
          const finalEmail = (extractedEmail || lead.email) as string;
          await this.calendarQueue.add('orchestrate-event', {
@@ -171,10 +170,9 @@ export class HandleIncomingMessageUseCase {
             attempts: 3,
             backoff: { type: 'exponential', delay: 5000 }
          });
-         this.logger.log(`Queue: Calendar orchestration dispatched for lead ${lead.id}`);
       }
 
-      // 8. AI Response Generation
+      // 7. AI Response Generation
       const fullHistory = await this.prisma.client.interaction.findMany({
         where: { leadId },
         orderBy: { createdAt: 'desc' },
@@ -197,14 +195,9 @@ export class HandleIncomingMessageUseCase {
         systemStatus
       }, accumulatedText);
 
-      // 9. Autopilot Engine (FULL AUTONOMY)
-      // Activating Autopilot if flag is true OR if it's the validated playbook flow
+      // 8. Autopilot Engine (OFFLOADING TO WHATSAPP-OUTBOUND QUEUE)
       const isAutopilotActive = organization.enableAutopilot === true || organization.automationMode === 'FULL_AUTOPILOT';
-      const isSuspended = organization.status === 'SUSPENDED';
-
-      // Playbook validation: if confirmed, we always want to dispatch the final confirmation automatically
       const isConfirmedSuccess = newStatus === 'CONFIRMADO' && isFinalClosingTriggered;
-      
       const shouldAutoDispatch = isAutopilotActive || isConfirmedSuccess;
 
       const needsApproval = !shouldAutoDispatch && (!isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus));
@@ -215,12 +208,16 @@ export class HandleIncomingMessageUseCase {
           data: { pendingMessage: aiResponse.content, lastInteractionAt: new Date() }
         });
       } else {
-        if (isSuspended) {
-          this.logger.warn(`Autopilot Blocked: Organization ${organizationId} is SUSPENDED.`);
-          return;
-        }
-
-        await this.omniChannel.sendMessage({ to: phone, text: aiResponse.content });
+        // Dispatch via Outbound Queue for robustness and billing interceptor
+        await this.outboundQueue.add('send-message', {
+          to: phone,
+          text: aiResponse.content,
+          organizationId
+        }, {
+          removeOnComplete: true,
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 }
+        });
 
         await this.prisma.client.$transaction([
           this.prisma.client.interaction.create({
@@ -241,7 +238,7 @@ export class HandleIncomingMessageUseCase {
         await this.usageMetering.incrementUsage(organizationId);
       }
 
-      // 10. Lead Scoring
+      // 9. Lead Scoring
       this.leadScoring.updateLeadScore(lead.id).catch(err => {
         this.logger.error(`Scoring Error: ${err.message}`);
       });
