@@ -43,34 +43,41 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const router = useRouter();
 
+  // 1. Initial State Sync (Client-side Only)
   useEffect(() => {
-    // Initial load from cookies
-    const token = Cookies.get("nexthub_token");
-    const sessionStr = Cookies.get("nexthub_session");
+    const syncAuth = () => {
+      const token = Cookies.get("nexthub_token");
+      const sessionStr = Cookies.get("nexthub_session");
 
-    if (token && sessionStr) {
-      try {
-        const session = JSON.parse(sessionStr);
-        setUser(session.user);
-        setIsSignedIn(true);
-        if (session.activeOrg) {
-          setOrgId(session.activeOrg.id);
-          setOrgSlug(session.activeOrg.slug);
-          setOrgRole(session.activeOrg.role);
-          setOrganization(session.activeOrg);
+      if (token && sessionStr) {
+        try {
+          const session = JSON.parse(sessionStr);
+          setUser(session.user);
+          setIsSignedIn(true);
+          if (session.activeOrg) {
+            setOrgId(session.activeOrg.id);
+            setOrgSlug(session.activeOrg.slug);
+            setOrgRole(session.activeOrg.role);
+            setOrganization(session.activeOrg);
+          }
+        } catch (e) {
+          console.error("Auth Sync Error:", e);
         }
-      } catch (e) {
-        console.error("Failed to parse session", e);
       }
-    }
-    setIsLoaded(true);
+      setIsLoaded(true);
+    };
+
+    syncAuth();
   }, []);
 
   const getToken = async () => {
+    if (typeof window === "undefined") return null;
     return Cookies.get("nexthub_token") || null;
   };
 
   const login = (token: string, userObj: User, orgs: any[]) => {
+    if (typeof window === "undefined") return;
+
     Cookies.set("nexthub_token", token, { secure: true, sameSite: "strict", expires: 7 });
     
     const activeOrg = orgs.length > 0 ? orgs[0] : null;
@@ -86,10 +93,13 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
       setOrgRole(activeOrg.role);
       setOrganization(activeOrg);
     }
-    router.push("/dashboard");
+    
+    window.location.href = "/dashboard";
   };
 
   const logout = () => {
+    if (typeof window === "undefined") return;
+
     Cookies.remove("nexthub_token");
     Cookies.remove("nexthub_session");
     setUser(null);
@@ -98,14 +108,16 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
     setOrgSlug(null);
     setOrgRole(null);
     setOrganization(null);
-    router.push("/login");
+    
+    window.location.href = "/login";
   };
 
   const updateOrganization = (newOrgId: string) => {
-     // Ideally fetch new org details and update session
-     // For now, this is a placeholder for the organization switcher
+     // Implementation pending
   };
 
+  // 2. Render children always to avoid hydration mismatch (Error #310)
+  // Components using context will handle isLoaded internally
   return (
     <AuthContext.Provider value={{
       isLoaded,
@@ -127,18 +139,28 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
+  // During SSR or static build, if provider is missing in a sub-tree, return a default state
   if (!context) {
-    throw new Error("useAuth must be used within a NativeAuthProvider");
+    return {
+      isLoaded: false,
+      isSignedIn: false,
+      user: null,
+      orgId: null,
+      orgRole: null,
+      orgSlug: null,
+      organization: null,
+      getToken: async () => null,
+      login: () => {},
+      logout: () => {},
+      setOrganization: () => {}
+    };
   }
   return context;
 };
 
 export const useUser = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error("useUser must be used within a NativeAuthProvider");
-  }
-  return { user: context.user, isLoaded: context.isLoaded, isSignedIn: context.isSignedIn };
+  const auth = useAuth();
+  return { user: auth.user, isLoaded: auth.isLoaded, isSignedIn: auth.isSignedIn };
 };
 
 export const useOrganizationList = () => {

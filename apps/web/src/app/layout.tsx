@@ -25,9 +25,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <NativeAuthProvider>
-      <html lang="pt-BR" suppressHydrationWarning>
-        <body className={cn(inter.className, "antialiased")}>
+    <html lang="pt-BR" suppressHydrationWarning>
+      <body className={cn(inter.className, "antialiased")}>
+        <NativeAuthProvider>
           <ThemeProvider
             attribute="class"
             defaultTheme="system"
@@ -37,9 +37,8 @@ export default function RootLayout({
               {children}
             <Toaster richColors position="top-right" />
           </ThemeProvider>
-        </body>
-      </html>
-    </NativeAuthProvider>
+        </NativeAuthProvider>
+      </body>
+    </html>
   );
 }
-
