@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/providers/theme-provider";
 import { NativeAuthProvider } from "@/providers/auth-provider";
 import { Toaster } from "sonner";
+import { Suspense } from "react";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -27,17 +28,21 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <body className={cn(inter.className, "antialiased")}>
-        <NativeAuthProvider>
-          <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-          >
-              {children}
-            <Toaster richColors position="top-right" />
-          </ThemeProvider>
-        </NativeAuthProvider>
+        <Suspense fallback={null}>
+          <NativeAuthProvider>
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              <div className="relative flex min-h-screen flex-col">
+                {children}
+              </div>
+              <Toaster richColors position="top-right" />
+            </ThemeProvider>
+          </NativeAuthProvider>
+        </Suspense>
       </body>
     </html>
   );
