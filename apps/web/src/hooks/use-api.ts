@@ -2,7 +2,7 @@ import { useAuth } from "../providers/auth-provider";
 import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export function useApi() {
   const { getToken, orgId } = useAuth();
@@ -37,44 +37,36 @@ export function useApi() {
     }
 
     try {
+      // Use standard fetch. Next.js Rewrites will handle the /api -> Gateway mapping
       const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers,
       });
 
       if (response.status === 402) {
-        // Tenant Suspended or Read-Only mutation blocked
         if (orgSlug) {
           router.push(`/${orgSlug}/billing/suspended`);
         }
         throw new Error('Assinatura Suspensa ou Pendência Financeira');
       }
 
-      // 1. Read response as raw text first
-      const rawText = await response.text();
+      // Check for non-JSON responses (Platform errors)
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        if (text.includes("Sincronizando")) {
+            throw new Error("O servidor está iniciando. Por favor, aguarde alguns segundos.");
+        }
+        throw new Error(`Erro inesperado do servidor (Status: ${response.status})`);
+      }
 
-      // 2. SANITIZATION: Remove parasite strings like "Sincronizando..." 
-      // which might be injected by the gateway during cold starts or middleware logs
-      const sanitizedText = rawText.replace(/Sincronizando\.\.\./g, "").trim();
+      const data = await response.json();
 
       if (!response.ok) {
-        let errorMessage = 'API request failed';
-        try {
-          const errorJson = JSON.parse(sanitizedText);
-          errorMessage = errorJson.message || errorMessage;
-        } catch (e) {
-          errorMessage = sanitizedText || errorMessage;
-        }
-        throw new Error(errorMessage);
+        throw new Error(data.message || 'API request failed');
       }
 
-      // 3. SECURE PARSING: Only parse after cleaning the payload
-      try {
-        return JSON.parse(sanitizedText) as T;
-      } catch (parseError) {
-        console.error("JSON Parse Error at:", endpoint, "Payload:", sanitizedText);
-        throw new Error(`Resposta inválida do servidor (Token error)`);
-      }
+      return data as T;
 
     } catch (error) {
       if (error instanceof Error) throw error;

@@ -5,7 +5,11 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. CORS PROTECTION
+  // 1. ISOLATION: Apply global prefix for all Gateway routes
+  // This ensures the Gateway correctly maps /api/* and doesn't interfere with frontend assets
+  app.setGlobalPrefix('api');
+
+  // 2. CORS PROTECTION
   app.enableCors({
     origin: [
       'https://next-hub.up.railway.app',
@@ -19,15 +23,27 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // 2. PROXY ROUTING: Standardizing on /api prefix for the Monolith
-  // This matches the Next.js rewrite destination
+  // 3. PROXY ROUTING: Map incoming requests to the API
+  // Since we have a global prefix 'api', this middleware will handle /api/v1/* etc.
   app.use(
-    '/api',
+    '/api/v1',
     createProxyMiddleware({
       target: process.env.API_URL || 'http://127.0.0.1:3001',
       changeOrigin: true,
       pathRewrite: {
-        '^/api': '', // Remove /api before sending to the NestJS API which has no global prefix
+        '^/api/v1': '',
+      },
+    }),
+  );
+
+  // Fallback for calls that use /api directly without versioning
+  app.use(
+    '/api-proxy',
+    createProxyMiddleware({
+      target: process.env.API_URL || 'http://127.0.0.1:3001',
+      changeOrigin: true,
+      pathRewrite: {
+        '^/api-proxy': '',
       },
     }),
   );
