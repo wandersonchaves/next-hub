@@ -1,6 +1,7 @@
 import { useAuth } from "../providers/auth-provider";
 import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -51,7 +52,8 @@ export function useApi() {
 
       // Handle Authentication Issues (Token invalid, expired or Secret mismatch)
       if (response.status === 401) {
-        logout(); // Clear local cookies
+        console.warn(`[useApi] 401 Unauthorized at ${endpoint}. Logging out.`);
+        logout(); 
         router.push('/login');
         throw new Error('Sessão expirada. Por favor, faça login novamente.');
       }
@@ -65,7 +67,15 @@ export function useApi() {
 
       // 504 Gateway Timeout or 502 Bad Gateway
       if (response.status === 504 || response.status === 502) {
-         throw new Error("O servidor demorou muito para responder. Isso pode ocorrer durante o início da aplicação ou em buscas complexas. Por favor, tente novamente em alguns instantes.");
+         const errorText = await response.text();
+         console.error(`[useApi] ${response.status} Error at ${endpoint}:`, errorText);
+         
+         try {
+            const errorJson = JSON.parse(errorText);
+            throw new Error(errorJson.message || "O servidor demorou muito para responder.");
+         } catch (e) {
+            throw new Error("O servidor demorou muito para responder. Isso pode ocorrer durante o início da aplicação ou em buscas complexas.");
+         }
       }
 
       // Check for non-JSON responses

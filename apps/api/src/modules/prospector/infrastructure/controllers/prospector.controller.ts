@@ -68,7 +68,7 @@ export class ProspectorController {
     @Headers('x-unit-id') unitId: string | undefined,
     @Body() body: { sector: string; region: string },
   ) {
-    // Add to queue for background processing
+    // Standardize queue payload
     await this.proactiveQueue.add('start-search', {
       sector: body.sector,
       region: body.region,
@@ -111,17 +111,28 @@ export class ProspectorController {
   @Get('leads')
   @ApiOperation({ summary: 'List all leads for the organization' })
   async getLeads(@CurrentOrg() org: Organization) {
+    // Performance optimization: only fetch latest interactions and relevant fields
     const leads = await this.prisma.client.lead.findMany({
       where: { organizationId: org.id },
-      include: {
-        appointments: true,
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        status: true,
+        lastInteractionAt: true,
+        createdAt: true,
+        appointments: {
+          select: { id: true, startTime: true, status: true }
+        },
         interactions: {
           orderBy: { createdAt: 'desc' },
-          take: 50
+          take: 10,
+          select: { id: true, content: true, type: true, createdAt: true }
         },
         suggestedMessages: {
           orderBy: { createdAt: 'desc' },
-          take: 1
+          take: 1,
+          select: { id: true, content: true, createdAt: true }
         }
       },
       orderBy: { lastInteractionAt: 'desc' }
