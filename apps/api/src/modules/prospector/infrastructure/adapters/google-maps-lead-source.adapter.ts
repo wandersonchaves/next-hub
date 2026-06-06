@@ -17,13 +17,18 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
+    // 1. SANITIZAÇÃO DE ENCODING: Garantir que caracteres especiais não quebrem a query
+    const encodedSector = encodeURIComponent(sector);
+    const encodedRegion = encodeURIComponent(region);
+    const searchContext = `${encodedSector} em ${encodedRegion}`;
+
     try {
-      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps para: ${sector} em ${region}`);
+      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps via Serper.dev para: ${sector} (${encodedSector}) em ${region} (${encodedRegion})`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
-          q: `${sector} em ${region}`,
+          q: searchContext,
           gl: 'br',
           hl: 'pt-br',
         },
@@ -32,7 +37,7 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
             'X-API-KEY': apiKey,
             'Content-Type': 'application/json',
           },
-          timeout: 15000,
+          timeout: 20000, // Aumentado para 20s devido à latência de rede/scraping
         },
       );
 
@@ -48,11 +53,28 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Busca concluída. ${realLeads.length} leads reais encontrados.`);
+      this.logger.log(`Busca concluída. ${realLeads.length} leads reais processados com sucesso.`);
       return realLeads.slice(0, 10);
 
-    } catch (error) {
-      this.logger.error(`Falha na busca real: ${error.message}`);
+    } catch (error: any) {
+      // 2. TELEMETRIA VERBOSA: Diagnóstico profundo de falhas de infraestrutura/faturamento
+      if (error.response) {
+        const status = error.response.status;
+        const data = JSON.stringify(error.response.data);
+
+        this.logger.error(`[Google Cloud / Serper Error] Falha crítica na requisição HTTP.`);
+        this.logger.error(`Status Code: ${status}`);
+        this.logger.error(`Response Data: ${data}`);
+
+        if (status === 403) {
+          this.logger.error('Dica: Verifique se o faturamento (billing) está ativo ou se a API key tem permissão para o endpoint /maps.');
+        }
+      } else if (error.request) {
+        this.logger.error('[Infrastructure Error] O request foi enviado mas nenhuma resposta foi recebida do Google/Serper.');
+      } else {
+        this.logger.error(`[Unexpected Error] ${error.message}`);
+      }
+      
       return [];
     }
   }
