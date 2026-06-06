@@ -5,10 +5,14 @@ import { RedisSessionCacheAdapter } from './infrastructure/adapters/redis-sessio
 import { IHashServiceToken } from './application/ports/hash-service.port';
 import { ITokenServiceToken } from './application/ports/token-service.port';
 import { ISessionCacheToken } from './application/ports/session-cache.port';
+import { LoginUseCase } from './application/use-cases/login.use-case';
+import { AuthController } from './infrastructure/controllers/auth.controller';
 
 @Global()
 @Module({
+  controllers: [AuthController],
   providers: [
+    LoginUseCase,
     {
       provide: IHashServiceToken,
       useClass: BcryptHashAdapter,

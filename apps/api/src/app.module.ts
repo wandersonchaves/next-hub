@@ -75,15 +75,19 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
         const password = config.get<string>('REDIS_PASSWORD');
+        const host = config.get<string>('REDIS_HOST', '127.0.0.1');
+        const port = config.get<number>('REDIS_PORT', 6379);
+
         return {
           connection: {
-            host: config.get<string>('REDIS_HOST', '127.0.0.1'),
-            port: config.get<number>('REDIS_PORT', 6379),
+            host,
+            port,
             ...(password ? { password } : {}),
-            // Handle connection drops during cold-starts or network blips
+            // Required by BullMQ when using ioredis
             maxRetriesPerRequest: null,
             retryStrategy: (times) => {
-              const delay = Math.min(times * 100, 3000);
+              // Reconnect after a delay
+              const delay = Math.min(times * 200, 5000);
               return delay;
             },
           },
@@ -104,8 +108,11 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
         
         return {
           store: await redisStore({
-            url: `redis://${host}:${port}`,
-            ...(password ? { password } : {}),
+            socket: {
+              host,
+              port,
+            },
+            password,
             ttl: 600,
           }),
         };

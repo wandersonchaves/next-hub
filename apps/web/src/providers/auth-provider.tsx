@@ -43,8 +43,11 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
   const [organization, setOrganization] = useState<Organization | null>(null);
   const router = useRouter();
 
-  // 1. Initial State Sync (Client-side Only)
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true);
+
     const syncAuth = () => {
       const token = Cookies.get("nexthub_token");
       const sessionStr = Cookies.get("nexthub_session");
@@ -54,11 +57,18 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
           const session = JSON.parse(sessionStr);
           setUser(session.user);
           setIsSignedIn(true);
+          
           if (session.activeOrg) {
-            setOrgId(session.activeOrg.id);
-            setOrgSlug(session.activeOrg.slug);
-            setOrgRole(session.activeOrg.role);
-            setOrganization(session.activeOrg);
+            // Note: organizationId is the key from backend LoginUseCase
+            const active = session.activeOrg;
+            setOrgId(active.organizationId || active.id); 
+            setOrgSlug(active.organizationSlug || active.slug);
+            setOrgRole(active.role);
+            setOrganization({
+               id: active.organizationId || active.id,
+               slug: active.organizationSlug || active.slug,
+               name: active.organizationName || active.name || 'Minha Empresa'
+            });
           }
         } catch (e) {
           console.error("Auth Sync Error:", e);
@@ -78,20 +88,25 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
   const login = (token: string, userObj: User, orgs: any[]) => {
     if (typeof window === "undefined") return;
 
-    Cookies.set("nexthub_token", token, { secure: true, sameSite: "strict", expires: 7 });
+    Cookies.set("nexthub_token", token, { secure: false, sameSite: "strict", expires: 7 });
     
     const activeOrg = orgs.length > 0 ? orgs[0] : null;
     const session = { user: userObj, activeOrg };
     
-    Cookies.set("nexthub_session", JSON.stringify(session), { secure: true, sameSite: "strict", expires: 7 });
+    Cookies.set("nexthub_session", JSON.stringify(session), { secure: false, sameSite: "strict", expires: 7 });
     
     setUser(userObj);
     setIsSignedIn(true);
+
     if (activeOrg) {
-      setOrgId(activeOrg.id);
-      setOrgSlug(activeOrg.slug);
+      setOrgId(activeOrg.organizationId || activeOrg.id);
+      setOrgSlug(activeOrg.organizationSlug || activeOrg.slug);
       setOrgRole(activeOrg.role);
-      setOrganization(activeOrg);
+      setOrganization({
+        id: activeOrg.organizationId || activeOrg.id,
+        slug: activeOrg.organizationSlug || activeOrg.slug,
+        name: activeOrg.organizationName || activeOrg.name || 'Minha Empresa'
+      });
     }
     
     window.location.href = "/dashboard";
@@ -116,8 +131,10 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
      // Implementation pending
   };
 
-  // 2. Render children always to avoid hydration mismatch (Error #310)
-  // Components using context will handle isLoaded internally
+  if (!mounted) {
+    return <div style={{ visibility: 'hidden' }}>{children}</div>;
+  }
+
   return (
     <AuthContext.Provider value={{
       isLoaded,
@@ -139,7 +156,6 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  // During SSR or static build, if provider is missing in a sub-tree, return a default state
   if (!context) {
     return {
       isLoaded: false,

@@ -5,7 +5,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. CORS PROTECTION: Targeted origin and preflight handling
+  // 1. CORS PROTECTION
   app.enableCors({
     origin: [
       'https://next-hub.up.railway.app',
@@ -19,18 +19,24 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // 2. PROXY ROUTING: Catch-all /api proxying
-  // This maps '/api/modules/...' directly to 'target/modules/...'
-  app.use(
-    '/api',
-    createProxyMiddleware({
-      target: process.env.API_URL || 'http://127.0.0.1:3001',
-      changeOrigin: true,
-      pathRewrite: {
-        '^/api': '', // Remove /api prefix before forwarding to the Monolith
-      },
-    }),
-  );
+  // 2. PROXY ROUTING: Catch-all /api proxying with EXTENDED TIMEOUT
+  // We use explicit configuration to avoid Gateway Timeout (504)
+  const proxyOptions: any = {
+    target: process.env.API_URL || 'http://127.0.0.1:3001',
+    changeOrigin: true,
+    proxyTimeout: 120000, 
+    timeout: 120000,      
+    onProxyRes: (proxyRes: any) => {
+      if (proxyRes.statusCode === 504 || proxyRes.statusCode === 502) {
+        proxyRes.headers['content-type'] = 'application/json';
+      }
+    },
+    pathRewrite: {
+      '^/api': '',
+    },
+  };
+
+  app.use('/api', createProxyMiddleware(proxyOptions));
 
   const port = process.env.PORT || 4000;
   const host = '0.0.0.0';

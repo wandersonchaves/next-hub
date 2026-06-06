@@ -34,16 +34,16 @@ export class MultiLevelAuthGuard implements CanActivate {
     // 1. Validar a assinatura do token
     const payload = await this.tokenService.verifyToken(token);
     if (!payload) {
-      throw new UnauthorizedException('Token inválido ou expirado.');
+      throw new UnauthorizedException('Assinatura do token inválida ou expirada (Mismatch de JWT_SECRET).');
     }
 
     // 2. Buscar metadados da sessão no Redis
     const session = await this.sessionCache.getSession(token);
     if (!session) {
-      throw new UnauthorizedException('Sessão inválida ou expirada.');
+      throw new UnauthorizedException('Sessão não encontrada no cache (Redis). Por favor, realize o login novamente.');
     }
 
-    // Injetar usuário sanitizado (compatível com controladores legados)
+    // Injetar usuário sanitizado
     const user = { id: session.userId, email: session.email };
     request['user'] = user;
 
@@ -66,15 +66,14 @@ export class MultiLevelAuthGuard implements CanActivate {
     }
 
     if (!companyId) {
-      // Allow execution for global routes (no specific org context required)
       return true; 
     }
 
-    // 4. RULE: Client Isolation & Permission Check from Session Metadata (Redis)
+    // 4. RULE: Client Isolation & Permission Check
     const activeMembership = session.memberships.find(m => m.organizationId === companyId);
     
     if (!activeMembership) {
-      throw new ForbiddenException('Acesso negado à organização.');
+      throw new ForbiddenException(`Acesso negado à organização ${companyId}.`);
     }
 
     request['organization'] = { id: activeMembership.organizationId, slug: activeMembership.organizationSlug };
@@ -83,8 +82,7 @@ export class MultiLevelAuthGuard implements CanActivate {
     if (unitId) {
       const activeUnit = activeMembership.units.find(u => u.unitId === unitId);
       if (!activeUnit) {
-        // Return 404 to hide the existence of the resource (Unit) from unauthorized users
-        throw new NotFoundException('Recurso não localizado ou acesso negado à unidade.');
+        throw new NotFoundException('Unidade não localizada ou acesso negado.');
       }
       request['unitPermission'] = activeUnit;
     }

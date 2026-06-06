@@ -25,7 +25,7 @@ export function useApi() {
 
     if (orgId && !headers.has('x-organization-id')) {
       headers.set('x-organization-id', orgId);
-      headers.set('x-company-id', orgId); // Support for both aliases
+      headers.set('x-company-id', orgId); 
     }
 
     // Inject Unit ID if present in localStorage
@@ -36,11 +36,18 @@ export function useApi() {
       }
     }
 
+    // 1. TIMEOUT CONTROLLER: Give the API enough time for heavy tasks (AI/Scraping)
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 120000); // 120 seconds
+
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers,
+        signal: controller.signal
       });
+
+      clearTimeout(id);
 
       if (response.status === 402) {
         if (orgSlug) {
@@ -49,7 +56,12 @@ export function useApi() {
         throw new Error('Assinatura Suspensa ou Pendência Financeira');
       }
 
-      // Check for non-JSON responses (Platform errors or cold starts)
+      // 504 Gateway Timeout or 502 Bad Gateway
+      if (response.status === 504 || response.status === 502) {
+         throw new Error("O servidor demorou muito para responder. Isso pode ocorrer durante o início da aplicação ou em buscas complexas. Por favor, tente novamente em alguns instantes.");
+      }
+
+      // Check for non-JSON responses
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
@@ -70,7 +82,11 @@ export function useApi() {
 
       return data as T;
 
-    } catch (error) {
+    } catch (error: any) {
+      clearTimeout(id);
+      if (error.name === 'AbortError') {
+        throw new Error('A requisição demorou demais e foi cancelada. Tente novamente.');
+      }
       if (error instanceof Error) throw error;
       throw new Error('Erro de conexão ou rede.');
     }
