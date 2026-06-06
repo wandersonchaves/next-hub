@@ -2,7 +2,7 @@ import { useAuth } from "../providers/auth-provider";
 import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:4000';
 
 export function useApi() {
   const { getToken, orgId } = useAuth();
@@ -36,27 +36,51 @@ export function useApi() {
       }
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-    });
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        ...options,
+        headers,
+      });
 
-    if (response.status === 402) {
-      // Tenant Suspended or Read-Only mutation blocked
-      if (orgSlug) {
-        router.push(`/${orgSlug}/billing/suspended`);
+      if (response.status === 402) {
+        // Tenant Suspended or Read-Only mutation blocked
+        if (orgSlug) {
+          router.push(`/${orgSlug}/billing/suspended`);
+        }
+        throw new Error('Assinatura Suspensa ou Pendência Financeira');
       }
-      throw new Error('Assinatura Suspensa ou Pendência Financeira');
-    }
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: 'An error occurred' }));
-      throw new Error(error.message || 'API request failed');
-    }
+      // 1. Read response as raw text first
+      const rawText = await response.text();
 
-    return response.json();
+      // 2. SANITIZATION: Remove parasite strings like "Sincronizando..." 
+      // which might be injected by the gateway during cold starts or middleware logs
+      const sanitizedText = rawText.replace(/Sincronizando\.\.\./g, "").trim();
+
+      if (!response.ok) {
+        let errorMessage = 'API request failed';
+        try {
+          const errorJson = JSON.parse(sanitizedText);
+          errorMessage = errorJson.message || errorMessage;
+        } catch (e) {
+          errorMessage = sanitizedText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
+
+      // 3. SECURE PARSING: Only parse after cleaning the payload
+      try {
+        return JSON.parse(sanitizedText) as T;
+      } catch (parseError) {
+        console.error("JSON Parse Error at:", endpoint, "Payload:", sanitizedText);
+        throw new Error(`Resposta inválida do servidor (Token error)`);
+      }
+
+    } catch (error) {
+      if (error instanceof Error) throw error;
+      throw new Error('Erro de conexão ou rede.');
+    }
   }, [getToken, orgId, router, orgSlug]);
 
   return { fetcher };
 }
-
