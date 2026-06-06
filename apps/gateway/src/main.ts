@@ -5,7 +5,18 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. CORS PROTECTION
+  // 1. Target Discovery & Sanitization
+  // We MUST ensure the target is a full URL with protocol
+  let apiTarget = process.env.API_URL || 'http://127.0.0.1:3001';
+  if (!apiTarget.startsWith('http')) {
+    apiTarget = `https://${apiTarget}`;
+  }
+  
+  console.log(`[Gateway] Bootstrap Strategy:`);
+  console.log(`[Gateway] API_URL Target: ${apiTarget}`);
+  console.log(`[Gateway] Port Binding: ${process.env.PORT || 4000}`);
+
+  // 2. CORS PROTECTION
   app.enableCors({
     origin: [
       'https://next-hub.up.railway.app',
@@ -19,49 +30,48 @@ async function bootstrap() {
     optionsSuccessStatus: 204,
   });
 
-  // 2. PROXY ROUTING: Catch-all /api proxying with EXTENDED TIMEOUT
-  const apiTarget = process.env.API_URL || 'http://127.0.0.1:3001';
-  
-  console.log(`[Gateway] Initialization...`);
-  console.log(`[Gateway] API_URL Target: ${apiTarget}`);
-  console.log(`[Gateway] Port Binding: ${process.env.PORT || 4000}`);
-
+  // 3. PROXY ROUTING: Catch-all /api proxying with DIAGNOSTICS
   const proxyOptions: any = {
     target: apiTarget,
     changeOrigin: true,
-    ws: true, // Support WebSockets if needed
+    ws: true,
     proxyTimeout: 120000, 
     timeout: 120000,      
     onProxyReq: (proxyReq: any, req: any) => {
+      // Diagnostic Log (Visible in Railway logs)
+      console.log(`[Gateway Proxy] Forwarding: ${req.method} ${req.url} -> ${apiTarget}${req.url.replace('/api', '')}`);
+      
       // Ensure we don't drop the organization headers
-      if (req.headers['x-organization-id']) {
-        proxyReq.setHeader('x-organization-id', req.headers['x-organization-id']);
-      }
-      if (req.headers['x-company-id']) {
-        proxyReq.setHeader('x-company-id', req.headers['x-company-id']);
+      const orgId = req.headers['x-organization-id'] || req.headers['organization-id'] || req.headers['x-company-id'];
+      if (orgId) {
+        proxyReq.setHeader('x-organization-id', orgId);
+        proxyReq.setHeader('x-company-id', orgId);
       }
     },
     onProxyRes: (proxyRes: any) => {
-      if (proxyRes.statusCode === 504 || proxyRes.statusCode === 502) {
+      // Prevent HTML leaks on error
+      if (proxyRes.statusCode >= 500) {
         proxyRes.headers['content-type'] = 'application/json';
       }
     },
     onError: (err: any, req: any, res: any) => {
-      console.error(`[Gateway Proxy Error] ${req.method} ${req.url} -> ${apiTarget}:`, err.message);
+      console.error(`[Gateway Critical Error] Failed to reach ${apiTarget}${req.url}:`, err.message);
       
       if (!res.headersSent) {
         res.writeHead(504, { 'Content-Type': 'application/json' });
       }
       
-      const responseBody = { 
+      res.end(JSON.stringify({ 
         statusCode: 504, 
-        message: 'O Gateway não conseguiu se comunicar com a API.',
-        details: `O alvo ${apiTarget} não respondeu a tempo ou está inacessível.`,
-        error: err.message,
-        hint: 'Verifique se a variável API_URL no Railway do Gateway aponta para o endereço interno da API (ex: http://api.railway.internal:3001)'
-      };
-      
-      res.end(JSON.stringify(responseBody));
+        message: 'A comunicação entre o Gateway e a API falhou em produção.',
+        debug: {
+            method: req.method,
+            path: req.url,
+            target: apiTarget,
+            reason: err.message,
+            hint: 'Verifique se a API_URL no Railway do Gateway está correta. Ela deve ser a URL INTERNA da API.'
+        }
+      }));
     },
     pathRewrite: {
       '^/api': '',
@@ -70,9 +80,13 @@ async function bootstrap() {
 
   app.use('/api', createProxyMiddleware(proxyOptions));
 
-  // Healthcheck for Gateway itself
+  // 4. SELF-HEALTHCHECK
   app.getHttpAdapter().get('/gateway-health', (req, res) => {
-    res.status(200).json({ status: 'up', target: apiTarget });
+    res.status(200).json({ 
+        status: 'up', 
+        target: apiTarget,
+        env: process.env.NODE_ENV || 'development'
+    });
   });
 
   const port = process.env.PORT || 4000;

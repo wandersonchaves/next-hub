@@ -1,7 +1,7 @@
 import { prisma } from './index.js';
 
 async function main() {
-  console.log('--- Multi-Level Access Refactor Seed (Final v4) ---');
+  console.log('--- Multi-Level Access Refactor Seed (Idempotent v5) ---');
 
   // 1. MASTER ADMIN & HQ
   const admin = await prisma.user.upsert({
@@ -34,7 +34,7 @@ async function main() {
     },
   });
 
-  const unitHq = await prisma.unit.upsert({
+  await prisma.unit.upsert({
     where: { id: 'unit-hq-master' },
     update: {},
     create: {
@@ -83,8 +83,11 @@ async function main() {
     }
   });
 
-  await prisma.unit.create({
-    data: {
+  await prisma.unit.upsert({
+    where: { id: 'unit-clinica-a' },
+    update: {},
+    create: {
+      id: 'unit-clinica-a',
       name: 'Sede Clínica A',
       organizationId: orgA.id,
       type: 'HEALTH',
@@ -120,8 +123,11 @@ async function main() {
     }
   });
 
-  await prisma.unit.create({
-    data: {
+  await prisma.unit.upsert({
+    where: { id: 'unit-suspensa' },
+    update: {},
+    create: {
+      id: 'unit-suspensa',
       name: 'Unidade Bloqueada',
       organizationId: orgSuspended.id,
       type: 'HEALTH',
@@ -135,7 +141,7 @@ async function main() {
     }
   });
 
-  console.log('Seed v4 applied successfully.');
+  console.log('Seed v5 applied successfully.');
 }
 
 main()
