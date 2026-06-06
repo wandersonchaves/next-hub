@@ -37,7 +37,6 @@ export function useApi() {
     }
 
     try {
-      // Use standard fetch. Next.js Rewrites will handle the /api -> Gateway mapping
       const response = await fetch(`${API_URL}${endpoint}`, {
         ...options,
         headers,
@@ -50,12 +49,15 @@ export function useApi() {
         throw new Error('Assinatura Suspensa ou Pendência Financeira');
       }
 
-      // Check for non-JSON responses (Platform errors)
+      // Check for non-JSON responses (Platform errors or cold starts)
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
         if (text.includes("Sincronizando")) {
-            throw new Error("O servidor está iniciando. Por favor, aguarde alguns segundos.");
+            throw new Error("O servidor está iniciando. Por favor, aguarde 30 segundos e tente novamente.");
+        }
+        if (response.status === 404) {
+            throw new Error(`Recurso não encontrado (${endpoint})`);
         }
         throw new Error(`Erro inesperado do servidor (Status: ${response.status})`);
       }
