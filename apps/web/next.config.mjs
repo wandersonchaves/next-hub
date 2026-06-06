@@ -25,7 +25,7 @@ const nextConfig = {
       },
       {
         source: '/api/:path*',
-        destination: `https://gateway-next-hub.up.railway.app/api/:path*`,
+        destination: `${process.env.NEXT_PUBLIC_GATEWAY_URL || 'http://127.0.0.1:4000'}/api/:path*`,
       },
     ];
   },
