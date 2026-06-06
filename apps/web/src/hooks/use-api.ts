@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
 export function useApi() {
-  const { getToken, orgId } = useAuth();
+  const { getToken, orgId, logout } = useAuth();
   const router = useRouter();
   const params = useParams() || {};
   const orgSlug = params.orgSlug as string | undefined;
@@ -49,6 +49,13 @@ export function useApi() {
 
       clearTimeout(id);
 
+      // Handle Authentication Issues (Token invalid, expired or Secret mismatch)
+      if (response.status === 401) {
+        logout(); // Clear local cookies
+        router.push('/login');
+        throw new Error('Sessão expirada. Por favor, faça login novamente.');
+      }
+
       if (response.status === 402) {
         if (orgSlug) {
           router.push(`/${orgSlug}/billing/suspended`);
@@ -90,7 +97,7 @@ export function useApi() {
       if (error instanceof Error) throw error;
       throw new Error('Erro de conexão ou rede.');
     }
-  }, [getToken, orgId, router, orgSlug]);
+  }, [getToken, orgId, router, orgSlug, logout]);
 
   return { fetcher };
 }

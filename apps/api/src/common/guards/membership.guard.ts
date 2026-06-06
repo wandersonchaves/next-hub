@@ -17,35 +17,47 @@ export class MembershipGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+
+    // 1. TRUST PREVIOUS GUARD: If MultiLevelAuthGuard already populated the organization and membership, we trust it.
+    if (request['organization'] && request['membership']) {
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
 
-    const request = context.switchToHttp().getRequest();
     const user = request.user;
     const orgSlug = request.params.orgSlug || request.query.orgSlug;
-    const headerOrgId = request.headers['x-organization-id'] || request.headers['organization-id'];
+    const headerOrgId = request.headers['x-organization-id'] || request.headers['organization-id'] || request.headers['x-company-id'];
 
     if (!user) {
       return false;
     }
 
-    // 1. Resolve Organization via Header
+    // 2. Resolve Organization via Header
     if (headerOrgId) {
-      const membership = user.memberships?.find(
-        m => m.organization.id === headerOrgId || m.organization.clerkId === headerOrgId
+      // Compatibility with native session (where memberships are simple objects)
+      const memberships = user.memberships || [];
+      const membership = memberships.find(
+        (m: any) => 
+          m.organizationId === headerOrgId || 
+          m.organization?.id === headerOrgId || 
+          m.organization?.clerkId === headerOrgId
       );
 
       if (!membership) {
-        throw new ForbiddenException('Access denied: You are not a member of this organization');
+        throw new ForbiddenException('Acesso negado: Você não é membro desta organização.');
       }
+      
       request['membership'] = membership;
-      request['organization'] = membership.organization;
+      request['organization'] = membership.organization || { id: membership.organizationId };
       return true;
     }
 
-    // 2. Resolve Organization via Slug
+    // 3. Resolve Organization via Slug
     if (orgSlug) {
       const membership = await this.getMembershipService.execute(
         user.id,
@@ -57,11 +69,11 @@ export class MembershipGuard implements CanActivate {
       return true;
     }
 
-    // 3. Fallback: Use user's first organization if nothing else matches (Dev Experience)
+    // 4. Fallback: Use user's first organization if nothing else matches (Dev Experience)
     if (user.memberships && user.memberships.length > 0) {
       const firstMembership = user.memberships[0];
       request['membership'] = firstMembership;
-      request['organization'] = firstMembership.organization;
+      request['organization'] = firstMembership.organization || { id: firstMembership.organizationId };
       return true;
     }
 

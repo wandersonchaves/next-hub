@@ -28,30 +28,34 @@ export class MultiLevelAuthGuard implements CanActivate {
     const token = this.extractTokenFromHeader(request);
 
     if (!token) {
-      throw new UnauthorizedException('Token de autenticação não fornecido.');
+      throw new UnauthorizedException('Token de autenticação não fornecido no Header.');
     }
 
     // 1. Validar a assinatura do token
     const payload = await this.tokenService.verifyToken(token);
     if (!payload) {
-      throw new UnauthorizedException('Assinatura do token inválida ou expirada (Mismatch de JWT_SECRET).');
+      throw new UnauthorizedException('A sua sessão expirou ou o segredo de segurança foi alterado. Por favor, faça login novamente para sincronizar.');
     }
 
     // 2. Buscar metadados da sessão no Redis
     const session = await this.sessionCache.getSession(token);
     if (!session) {
-      throw new UnauthorizedException('Sessão não encontrada no cache (Redis). Por favor, realize o login novamente.');
+      throw new UnauthorizedException('Sessão não localizada no cache. Por favor, realize o login novamente.');
     }
 
-    // Injetar usuário sanitizado
-    const user = { id: session.userId, email: session.email };
+    // 3. Injetar usuário e memberships no request (Compatibilidade com Guards Legados)
+    const user = { 
+      id: session.userId, 
+      email: session.email,
+      memberships: session.memberships 
+    };
     request['user'] = user;
 
     // Headers
-    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'];
+    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'] || request.headers['organization-id'];
     const unitId = request.headers['x-unit-id'] || request.headers['unit-id'];
 
-    // 3. RULE: Super-Admin Bypass
+    // 4. RULE: Super-Admin Bypass
     const adminId = this.configService.get<string>('ADMIN_ID');
     const isSuperAdmin = user && (
       (adminId && (user.id === adminId)) ||
@@ -69,13 +73,14 @@ export class MultiLevelAuthGuard implements CanActivate {
       return true; 
     }
 
-    // 4. RULE: Client Isolation & Permission Check
+    // 5. RULE: Client Isolation & Permission Check
     const activeMembership = session.memberships.find(m => m.organizationId === companyId);
     
     if (!activeMembership) {
-      throw new ForbiddenException(`Acesso negado à organização ${companyId}.`);
+      throw new ForbiddenException(`Acesso negado à organização ${companyId}. Você não possui permissão para este Tenant.`);
     }
 
+    // Populate organization and membership for use in services/controllers
     request['organization'] = { id: activeMembership.organizationId, slug: activeMembership.organizationSlug };
     request['membership'] = activeMembership;
 
