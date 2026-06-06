@@ -5,11 +5,7 @@ import { createProxyMiddleware } from 'http-proxy-middleware';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 1. ISOLATION: Apply global prefix for all Gateway routes
-  app.setGlobalPrefix('api');
-
-  // 2. CORS PROTECTION: Targeted origin and preflight handling
-  // Configured to support Railway deployment and local development
+  // 1. CORS PROTECTION: Targeted origin and preflight handling
   app.enableCors({
     origin: [
       'https://next-hub.up.railway.app',
@@ -21,10 +17,12 @@ async function bootstrap() {
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     preflightContinue: false,
-    optionsSuccessStatus: 204, // Required for legacy browser support and preflight standardization
+    optionsSuccessStatus: 204,
   });
 
-  // Simple Proxying for the Monolithic API
+  // 2. PROXY ROUTING: Map incoming requests to the API
+  // We remove the global prefix 'api' to avoid competing with Next.js internal routes
+  // and handle routing specifically via middleware.
   app.use(
     '/api/v1',
     createProxyMiddleware({
