@@ -31,7 +31,7 @@ export class GrokAIService {
       });
 
       const { text } = await generateText({
-        model: xai('grok-beta'), // or 'grok-1' depending on availability
+        model: xai('grok-2'), 
         system: request.system,
         prompt: request.prompt,
         abortSignal: AbortSignal.timeout(30000), // 30s timeout
