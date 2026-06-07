@@ -17,29 +17,34 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // 1. SANITIZAÇÃO DE ENCODING: Garantir que caracteres especiais não quebrem a query
-    const encodedSector = encodeURIComponent(sector);
-    const encodedRegion = encodeURIComponent(region);
-    const searchContext = `${encodedSector} em ${encodedRegion}`;
+    // CORREÇÃO: No corpo de um POST JSON, não devemos usar encodeURIComponent.
+    // O axios/JSON.stringify já trata a serialização. O Google Maps espera espaços normais.
+    const searchContext = `${sector} em ${region}`;
 
     try {
-      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps via Serper.dev para: ${sector} (${encodedSector}) em ${region} (${encodedRegion})`);
+      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps via Serper.dev para: "${searchContext}"`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
           q: searchContext,
-          gl: 'br',
-          hl: 'pt-br',
+          gl: 'br', // Forçar resultados no Brasil
+          hl: 'pt-br', // Idioma em Português
         },
         {
           headers: {
             'X-API-KEY': apiKey,
             'Content-Type': 'application/json',
           },
-          timeout: 20000, // Aumentado para 20s devido à latência de rede/scraping
+          timeout: 25000,
         },
       );
+
+      // Log para Debug de Resposta Vazia
+      if (!response.data.maps || response.data.maps.length === 0) {
+        this.logger.warn(`Serper.dev retornou status 200 mas com 0 resultados para: "${searchContext}"`);
+        this.logger.debug(`Raw Payload recebido: ${JSON.stringify(response.data)}`);
+      }
 
       const results = response.data.maps || [];
       
@@ -53,37 +58,33 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Busca concluída. ${realLeads.length} leads reais processados com sucesso.`);
+      this.logger.log(`Busca concluída. ${realLeads.length} leads com telefone encontrados.`);
       return realLeads.slice(0, 10);
 
     } catch (error: any) {
-      // 2. TELEMETRIA VERBOSA: Diagnóstico profundo de falhas de infraestrutura/faturamento
       if (error.response) {
-        const status = error.response.status;
-        const data = JSON.stringify(error.response.data);
-
-        this.logger.error(`[Google Cloud / Serper Error] Falha crítica na requisição HTTP.`);
-        this.logger.error(`Status Code: ${status}`);
-        this.logger.error(`Response Data: ${data}`);
-
-        if (status === 403) {
-          this.logger.error('Dica: Verifique se o faturamento (billing) está ativo ou se a API key tem permissão para o endpoint /maps.');
-        }
-      } else if (error.request) {
-        this.logger.error('[Infrastructure Error] O request foi enviado mas nenhuma resposta foi recebida do Google/Serper.');
+        this.logger.error(`[Serper API Error] ${error.response.status}: ${JSON.stringify(error.response.data)}`);
       } else {
-        this.logger.error(`[Unexpected Error] ${error.message}`);
+        this.logger.error(`[Infrastructure Error] ${error.message}`);
       }
-      
       return [];
     }
   }
 
   private sanitizePhoneNumber(raw: string): string {
+    // Remove tudo que não é número
     let cleaned = raw.replace(/\D/g, '');
+    
+    // Se começar com 0, remove o zero (comum em DDDs capturados pelo Google)
+    if (cleaned.startsWith('0')) {
+      cleaned = cleaned.substring(1);
+    }
+
+    // Se for um número brasileiro sem DDI (10 ou 11 dígitos), adiciona 55
     if (cleaned.length === 10 || cleaned.length === 11) {
       cleaned = `55${cleaned}`;
     }
+    
     return cleaned;
   }
 }
