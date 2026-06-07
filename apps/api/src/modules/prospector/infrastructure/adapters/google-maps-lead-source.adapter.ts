@@ -17,31 +17,17 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // 1. ESTRATÉGIA DE BUSCA EM DUAS ETAPAS
-    // Tentativa 1: Query específica "Setor Região"
-    const primaryQuery = `${sector} ${region}`.trim();
-    let leads = await this.executeSerperQuery(primaryQuery, apiKey);
+    const searchContext = `${sector} ${region}`.trim();
 
-    // Tentativa 2: Fallback se a primeira falhar (Query mais abrangente)
-    if (leads.length === 0 && region) {
-      this.logger.log(`Tentativa 2: Refinando busca para "${sector}" em "${region}" com formato alternativo...`);
-      const fallbackQuery = `${sector} em ${region}, Brasil`;
-      leads = await this.executeSerperQuery(fallbackQuery, apiKey);
-    }
-
-    return leads.slice(0, 10);
-  }
-
-  private async executeSerperQuery(query: string, apiKey: string): Promise<ScrapedLead[]> {
     try {
-      this.logger.log(`Consultando Serper (Maps): "${query}"`);
+      this.logger.log(`PRODUÇÃO: Consultando Serper.dev para: "${searchContext}"`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
-          q: query,
-          // Removendo GL/HL temporariamente para testar se a restrição geográfica está bloqueando resultados
-          autocorrect: true
+          q: searchContext,
+          gl: 'br',    
+          hl: 'pt-br'
         },
         {
           headers: {
@@ -53,17 +39,16 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       );
 
       const data = response.data;
+      
+      // AJUSTE DE CONTRATO: A Serper retorna 'places' em vez de 'maps'
+      const results = data.places || data.maps || [];
 
-      // LOG DE DIAGNÓSTICO PROFUNDO: Visível na Railway
-      if (!data.maps || data.maps.length === 0) {
-        this.logger.warn(`Google retornou 0 locais para: "${query}".`);
-        this.logger.debug(`Resposta completa da Serper: ${JSON.stringify(data)}`);
+      if (results.length === 0) {
+        this.logger.warn(`Zero resultados encontrados para: "${searchContext}".`);
         return [];
       }
 
-      const results = data.maps;
-      
-      const scrapedLeads = results
+      const validLeads = results
         .filter((place: any) => !!place.phoneNumber)
         .map((place: any) => ({
           name: place.title,
@@ -73,25 +58,34 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Sucesso: ${scrapedLeads.length} leads qualificados de ${results.length} encontrados.`);
-      return scrapedLeads;
+      this.logger.log(`Sucesso: ${validLeads.length} leads reais extraídos de ${results.length} locais encontrados.`);
+      
+      return validLeads.slice(0, 10);
 
     } catch (error: any) {
       const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
-      this.logger.error(`Falha na Query "${query}": ${errorMsg}`);
+      this.logger.error(`Falha na integração Serper: ${errorMsg}`);
       return [];
     }
   }
 
   private sanitizePhoneNumber(raw: string): string {
     if (!raw) return '';
-    let cleaned = raw.replace(/\D/g, '');
     
-    // Tratamento para números brasileiros
+    // O Serper retorna "+55 86 3011-6646"
+    let cleaned = raw.replace(/\D/g, ''); // "558630116646"
+    
+    // Tratamento de prefixos nacionais
     if (cleaned.length === 11 && cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
 
+    // Se já tiver 12 ou 13 dígitos e começar com 55, está perfeito
+    if (cleaned.startsWith('55') && (cleaned.length === 12 || cleaned.length === 13)) {
+       return cleaned;
+    }
+
+    // Se tiver 10 ou 11 dígitos, adiciona o DDI 55
     if (cleaned.length === 10 || cleaned.length === 11) {
       cleaned = `55${cleaned}`;
     }
