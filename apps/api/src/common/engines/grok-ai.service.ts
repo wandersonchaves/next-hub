@@ -31,10 +31,10 @@ export class GrokAIService {
       });
 
       const { text } = await generateText({
-        model: xai('grok-2'), 
+        model: xai('grok-beta'), // Reverting to 'grok-beta' as 'grok-2' returned Bad Request (likely key restricted)
         system: request.system,
         prompt: request.prompt,
-        abortSignal: AbortSignal.timeout(30000), // 30s timeout
+        abortSignal: AbortSignal.timeout(30000),
       });
 
       return text;

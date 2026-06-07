@@ -28,6 +28,13 @@ export class AIOrchestratorEngine {
   ) {}
 
   async generate<T = any>(request: AIOrchestratorRequest): Promise<AIOrchestratorResponse<T>> {
+    const useMock = this.configService.get<string>('USE_MOCK_AI') === 'true';
+
+    if (useMock) {
+      this.logger.log('--- MOCK AI MODE ACTIVE ---');
+      return this.generateMockResponse<T>(request);
+    }
+
     const geminiKey = this.configService.get<string>('GOOGLE_GENERATIVE_AI_API_KEY');
     const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
 
@@ -43,29 +50,22 @@ export class AIOrchestratorEngine {
       MENSAGEM ATUAL DO USUÁRIO: "${request.message}"
     `;
 
-    // 1. Attempt with Google Gemini
-    const googleV1Beta = createGoogleGenerativeAI({
-      apiKey: geminiKey || '',
-      baseURL: 'https://generativelanguage.googleapis.com/v1beta',
-    });
-
-    const googleV1 = createGoogleGenerativeAI({
+    // 1. Attempt with Google Gemini (Standardizing on stable aliases)
+    const google = createGoogleGenerativeAI({
       apiKey: geminiKey || '',
     });
 
     const modelsToTry = [
-      { provider: googleV1Beta, name: 'gemini-flash-latest' },
-      { provider: googleV1Beta, name: 'gemini-1.5-flash-latest' },
-      { provider: googleV1, name: 'gemini-1.5-flash' },
-      { provider: googleV1, name: 'gemini-pro' }
+      'gemini-1.5-flash',
+      'gemini-1.5-pro'
     ];
 
-    for (const { provider, name } of modelsToTry) {
+    for (const name of modelsToTry) {
       try {
         if (!geminiKey) break;
         this.logger.debug(`Attempting AI inference with model: ${name}`);
         const { text } = await generateText({
-          model: provider(name),
+          model: google(name),
           prompt,
           abortSignal: AbortSignal.timeout(30000),
         });
@@ -110,6 +110,28 @@ export class AIOrchestratorEngine {
       this.logger.error(errorMessage);
       throw new Error(`Falha catastrófica no Motor de IA: Verifique o faturamento da Google (Gemini), xAI (Grok) e OpenAI (GPT).`);
     }
+  }
+
+  private generateMockResponse<T>(request: AIOrchestratorRequest): AIOrchestratorResponse<T> {
+    // Generate a contextual mock based on the presence of expectedFormat (JSON)
+    if (request.expectedFormat) {
+       const mockJson = {
+          content: "Olá! Notei que você possui uma clínica de excelência. Gostaria de agendar uma breve conversa sobre como podemos otimizar seu fluxo de leads?",
+          intent: "BOOKING",
+          email: "contato@exemplo.com",
+          appointmentDate: new Date(Date.now() + 86400000).toISOString() // Tomorrow
+       };
+       return {
+          content: mockJson.content,
+          extractedData: mockJson as T,
+          rawResponse: JSON.stringify(mockJson)
+       };
+    }
+
+    return {
+       content: "Olá, sou o assistente virtual do NextHub (Modo Simulado). Como posso ajudar?",
+       rawResponse: "Olá, sou o assistente virtual do NextHub (Modo Simulado). Como posso ajudar?"
+    };
   }
 
   private parseResponse<T>(text: string, expectsJson: boolean): AIOrchestratorResponse<T> {
