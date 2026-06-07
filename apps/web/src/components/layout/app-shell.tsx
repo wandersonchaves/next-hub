@@ -2,12 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { 
   LayoutDashboard, 
   Settings, 
-  Users, 
   Bell,
   Menu,
   Heart,
@@ -29,27 +28,33 @@ interface AppShellProps {
 
 export function AppShell({ children, orgSlug }: AppShellProps) {
   const pathname = usePathname();
-  const { config, loading, selectUnit, activeUnitId } = useTenantConfig();
-  const { orgRole, logout } = useAuth();
+  const router = useRouter();
+  const { config, loading: configLoading, selectUnit, activeUnitId } = useTenantConfig();
+  const { orgRole, logout, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [unitMenuOpen, setUnitMenuOpen] = useState(false);
   
   // Sidebar minimization state
   const [isMinimized, setIsMinimized] = useState(false);
 
-  // Focus Responsiveness: Minimize on blur, Expand on focus
+  // 1. HYDRATION STATE GUARD: Intercept unauthenticated users immediately
+  useEffect(() => {
+    if (isLoaded && !isSignedIn) {
+      router.replace("/login");
+    }
+  }, [isLoaded, isSignedIn, router]);
+
+  // 2. EXPURGO DE LISTENERS: Keep only 'blur' for auto-minimization
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleBlur = () => setIsMinimized(true);
-    const handleFocus = () => setIsMinimized(false);
+    // REMOVED: handleFocus listener that expanded the menu automatically
 
     window.addEventListener("blur", handleBlur);
-    window.addEventListener("focus", handleFocus);
 
     return () => {
       window.removeEventListener("blur", handleBlur);
-      window.removeEventListener("focus", handleFocus);
     };
   }, []);
 
@@ -74,6 +79,11 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
   const navigation = [ coreItems[0], ...activeVerticals, coreItems[1] ];
 
   const currentUnit = config?.units.find(u => u.id === activeUnitId) || config?.units[0];
+
+  // While auth is not loaded, show nothing to avoid UI flashes/hydration errors
+  if (!isLoaded || !isSignedIn) {
+    return null;
+  }
 
   return (
     <div className="flex h-screen bg-background text-foreground selection:bg-primary/10 overflow-hidden">
