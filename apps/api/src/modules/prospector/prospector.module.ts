@@ -8,6 +8,7 @@ import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sale
 import { SendOutboundMessageUseCase } from './application/use-cases/send-outbound-message.use-case';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
+import { GrokAIService } from '../../common/engines/grok-ai.service';
 import { EvolutionWhatsAppClient } from './infrastructure/adapters/evolution-whatsapp.client';
 import { GoogleMapsLeadSourceAdapter } from './infrastructure/adapters/google-maps-lead-source.adapter';
 import { MockLeadSourceAdapter } from './infrastructure/adapters/mock-lead-source.adapter';
@@ -47,6 +48,7 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     GoogleCalendarService,
     LeadScoringService,
     AIChatService,
+    GrokAIService,
     CalendarOrchestratorWorker,
     {
       provide: 'ILeadRepository',
@@ -86,7 +88,8 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     GenerateSalesPitchUseCase, 
     SendOutboundMessageUseCase,
     LeadScoringService,
-    AIChatService
+    AIChatService,
+    GrokAIService
   ],
 })
 export class ProspectorModule { }

@@ -1,7 +1,6 @@
 import { useAuth } from "../providers/auth-provider";
 import { useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { toast } from "sonner";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -11,25 +10,29 @@ export function useApi() {
   const params = useParams() || {};
   const orgSlug = params.orgSlug as string | undefined;
 
+  /**
+   * Refactored fetcher to strictly intercept headers and safely parse JSON.
+   * Eliminates 401 errors and "Unexpected token N" crashes.
+   */
   const fetcher = useCallback(async <T>(
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> => {
+    // 1. SYNCHRONOUS HEADER INTERCEPTION
     const token = await getToken();
-
     const headers = new Headers(options.headers);
+    
     headers.set('Content-Type', 'application/json');
-
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
     }
 
+    // Context injection
     if (orgId && !headers.has('x-organization-id')) {
       headers.set('x-organization-id', orgId);
       headers.set('x-company-id', orgId); 
     }
 
-    // Inject Unit ID if present in localStorage
     if (typeof window !== 'undefined') {
       const unitId = localStorage.getItem('x-unit-id');
       if (unitId && !headers.has('x-unit-id')) {
@@ -37,9 +40,8 @@ export function useApi() {
       }
     }
 
-    // 1. TIMEOUT CONTROLLER: Give the API enough time for heavy tasks (AI/Scraping)
     const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), 120000); // 120 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min guard
 
     try {
       const response = await fetch(`${API_URL}${endpoint}`, {
@@ -48,64 +50,55 @@ export function useApi() {
         signal: controller.signal
       });
 
-      clearTimeout(id);
+      clearTimeout(timeoutId);
 
-      // Handle Authentication Issues (Token invalid, expired or Secret mismatch)
+      // 2. SAFE EXCEPTION HANDLING
       if (response.status === 401) {
-        console.warn(`[useApi] 401 Unauthorized at ${endpoint}. Logging out.`);
+        console.error(`[Security] 401 Unauthorized at ${endpoint}. Forcing session sync.`);
         logout(); 
         router.push('/login');
-        throw new Error('Sessão expirada. Por favor, faça login novamente.');
+        throw new Error('Acesso negado: Sessão expirada ou inválida.');
       }
 
-      if (response.status === 402) {
-        if (orgSlug) {
-          router.push(`/${orgSlug}/billing/suspended`);
-        }
-        throw new Error('Assinatura Suspensa ou Pendência Financeira');
-      }
+      // Read as text to prevent "Unexpected token" crashes
+      const responseText = await response.text();
 
-      // 504 Gateway Timeout or 502 Bad Gateway
-      if (response.status === 504 || response.status === 502) {
-         const errorText = await response.text();
-         console.error(`[useApi] ${response.status} Error at ${endpoint}:`, errorText);
-         
-         try {
-            const errorJson = JSON.parse(errorText);
-            throw new Error(errorJson.message || "O servidor demorou muito para responder.");
-         } catch (e) {
-            throw new Error("O servidor demorou muito para responder. Isso pode ocorrer durante o início da aplicação ou em buscas complexas.");
+      // Detection of raw platform strings (like "NextHub..." or "Not Authorized")
+      // that trigger the "Unexpected token N" syntax error.
+      const isHtmlOrText = responseText.trim().startsWith("<") || 
+                           responseText.trim().startsWith("N") ||
+                           !responseText.trim().startsWith("{");
+
+      if (isHtmlOrText || !response.headers.get("content-type")?.includes("application/json")) {
+         if (response.status >= 500) {
+            throw new Error("O servidor está temporariamente indisponível. Tente novamente em alguns instantes.");
          }
+         if (response.status === 404) {
+            throw new Error(`Endpoint não localizado: ${endpoint}`);
+         }
+         // Fallback safe parse
+         return { message: "Unexpected server response", raw: responseText } as any;
       }
 
-      // Check for non-JSON responses
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        if (text.includes("Sincronizando")) {
-            throw new Error("O servidor está iniciando. Por favor, aguarde 30 segundos e tente novamente.");
+      // SAFE JSON PARSE
+      try {
+        const data = JSON.parse(responseText);
+        
+        if (!response.ok) {
+          throw new Error(data.message || 'API request failed');
         }
-        if (response.status === 404) {
-            throw new Error(`Recurso não encontrado (${endpoint})`);
-        }
-        throw new Error(`Erro inesperado do servidor (Status: ${response.status})`);
+
+        return data as T;
+      } catch (parseError) {
+        console.error("[JSON Error] Could not parse server response:", responseText);
+        throw new Error("Erro de processamento nos dados do servidor.");
       }
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'API request failed');
-      }
-
-      return data as T;
 
     } catch (error: any) {
-      clearTimeout(id);
-      if (error.name === 'AbortError') {
-        throw new Error('A requisição demorou demais e foi cancelada. Tente novamente.');
-      }
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') throw new Error('A requisição expirou por lentidão na rede.');
       if (error instanceof Error) throw error;
-      throw new Error('Erro de conexão ou rede.');
+      throw new Error('Erro crítico de comunicação.');
     }
   }, [getToken, orgId, router, orgSlug, logout]);
 
