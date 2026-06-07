@@ -17,24 +17,21 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // 1. LIMPEZA DE PARÂMETROS: Remove vírgulas residuais e espaços extras
+    // 1. QUERY OPTIMIZATION: "Setor Região" (Padrão nativo do Google Maps)
+    // Removendo o "em" e a vírgula para dar máxima liberdade ao algoritmo do Google
     const cleanSector = sector.trim();
     const cleanRegion = region ? region.trim() : '';
-    
-    // Constrói a query de forma limpa: "Setor em Regiao" ou apenas "Setor"
-    const searchContext = cleanRegion 
-      ? `${cleanSector} em ${cleanRegion}`
-      : cleanSector;
+    const searchContext = `${cleanSector} ${cleanRegion}`.trim();
 
     try {
-      this.logger.log(`PRODUÇÃO: Consultando Serper.dev (Endpoint /maps) para: "${searchContext}"`);
+      this.logger.log(`PRODUÇÃO: Consultando Serper.dev para: "${searchContext}"`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
           q: searchContext,
-          gl: 'br', // Forçar resultados no Brasil
-          hl: 'pt-br', // Idioma em Português
+          gl: 'br', 
+          hl: 'pt-br',
           autocorrect: true
         },
         {
@@ -50,18 +47,18 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       
       if (!data.maps || data.maps.length === 0) {
         this.logger.warn(`Zero resultados para: "${searchContext}".`);
-        this.logger.debug(`Resposta completa da API: ${JSON.stringify(data)}`);
-        return []; // Interrompe o processo sem recursão para evitar loops
+        this.logger.debug(`Estrutura da Resposta: ${JSON.stringify(data)}`);
+        return []; 
       }
 
       const results = data.maps;
       
-      // Filtragem: Apenas locais com telefone e que batam minimamente com o setor (evita spam de outros ramos)
+      // Mapeamento com saneamento rigoroso
       const leads = results
         .filter((place: any) => {
           const hasPhone = !!place.phoneNumber;
           if (!hasPhone) {
-            this.logger.debug(`Lead descartado (Sem telefone): ${place.title}`);
+            this.logger.debug(`Ignorado (Sem Telefone): ${place.title}`);
           }
           return hasPhone;
         })
@@ -73,7 +70,7 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Sucesso: ${leads.length} leads qualificados de ${results.length} encontrados.`);
+      this.logger.log(`Sucesso: ${leads.length} leads qualificados encontrados para "${searchContext}".`);
       
       return leads.slice(0, 10);
 
@@ -89,15 +86,13 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
 
   private sanitizePhoneNumber(raw: string): string {
     if (!raw) return '';
-    
     let cleaned = raw.replace(/\D/g, '');
     
-    // Algumas APIs do Google retornam o 0 do DDD (ex: 086). Removemos para padronizar.
+    // Padronização para Brasil (DDI 55)
     if (cleaned.length === 11 && cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
 
-    // Garante DDI 55 se tiver 10 ou 11 dígitos
     if (cleaned.length === 10 || cleaned.length === 11) {
       cleaned = `55${cleaned}`;
     }
