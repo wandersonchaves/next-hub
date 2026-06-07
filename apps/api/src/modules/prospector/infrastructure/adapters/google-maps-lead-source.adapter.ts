@@ -17,19 +17,19 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // CORREÇÃO: No corpo de um POST JSON, não devemos usar encodeURIComponent.
-    // O axios/JSON.stringify já trata a serialização. O Google Maps espera espaços normais.
-    const searchContext = `${sector} em ${region}`;
+    // A Serper.dev às vezes performa melhor com a query no formato "Setor, Região"
+    const searchContext = `${sector}, ${region}`;
 
     try {
-      this.logger.log(`PRODUÇÃO: Iniciando busca REAL no Google Maps via Serper.dev para: "${searchContext}"`);
+      this.logger.log(`PRODUÇÃO: Consultando Serper.dev (Endpoint /maps) para: "${searchContext}"`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
           q: searchContext,
-          gl: 'br', // Forçar resultados no Brasil
-          hl: 'pt-br', // Idioma em Português
+          gl: 'br',
+          hl: 'pt-br',
+          autocorrect: true
         },
         {
           headers: {
@@ -40,16 +40,31 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
         },
       );
 
-      // Log para Debug de Resposta Vazia
-      if (!response.data.maps || response.data.maps.length === 0) {
-        this.logger.warn(`Serper.dev retornou status 200 mas com 0 resultados para: "${searchContext}"`);
-        this.logger.debug(`Raw Payload recebido: ${JSON.stringify(response.data)}`);
+      // DEBUG PROFUNDO: Vamos ver exatamente o que o Google respondeu
+      const data = response.data;
+      
+      if (!data.maps || data.maps.length === 0) {
+        this.logger.warn(`Aviso: O Google Maps não retornou nenhum local para "${searchContext}".`);
+        this.logger.debug(`Resposta completa da API: ${JSON.stringify(data)}`);
+        
+        // Tentativa de Fallback: Query simplificada
+        if (searchContext.includes(',')) {
+             this.logger.log('Tentando busca simplificada sem vírgula...');
+             return this.findLeads(sector, ''); // Recursão controlada (cuidado) ou apenas log
+        }
       }
 
-      const results = response.data.maps || [];
+      const results = data.maps || [];
       
-      const realLeads = results
-        .filter((place: any) => place.phoneNumber)
+      // Filtragem e Mapeamento
+      const leads = results
+        .filter((place: any) => {
+          const hasPhone = !!place.phoneNumber;
+          if (!hasPhone) {
+            this.logger.debug(`Lead descartado por falta de telefone: ${place.title}`);
+          }
+          return hasPhone;
+        })
         .map((place: any) => ({
           name: place.title,
           phone: this.sanitizePhoneNumber(place.phoneNumber),
@@ -58,29 +73,32 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Busca concluída. ${realLeads.length} leads com telefone encontrados.`);
-      return realLeads.slice(0, 10);
+      this.logger.log(`Sucesso: ${leads.length} leads com telefone extraídos de ${results.length} locais encontrados.`);
+      
+      return leads.slice(0, 10);
 
     } catch (error: any) {
       if (error.response) {
-        this.logger.error(`[Serper API Error] ${error.response.status}: ${JSON.stringify(error.response.data)}`);
+        this.logger.error(`[Serper API Error] Status ${error.response.status}: ${JSON.stringify(error.response.data)}`);
       } else {
-        this.logger.error(`[Infrastructure Error] ${error.message}`);
+        this.logger.error(`[Network/Config Error] ${error.message}`);
       }
       return [];
     }
   }
 
   private sanitizePhoneNumber(raw: string): string {
+    if (!raw) return '';
+    
     // Remove tudo que não é número
     let cleaned = raw.replace(/\D/g, '');
     
-    // Se começar com 0, remove o zero (comum em DDDs capturados pelo Google)
+    // Tratamento de prefixos comuns do Brasil capturados pelo Google
     if (cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
 
-    // Se for um número brasileiro sem DDI (10 ou 11 dígitos), adiciona 55
+    // Se for um número de 10 ou 11 dígitos, assume que falta o DDI 55
     if (cleaned.length === 10 || cleaned.length === 11) {
       cleaned = `55${cleaned}`;
     }
