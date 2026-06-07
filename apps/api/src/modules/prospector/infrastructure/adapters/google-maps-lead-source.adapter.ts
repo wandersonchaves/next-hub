@@ -17,8 +17,14 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // A Serper.dev às vezes performa melhor com a query no formato "Setor, Região"
-    const searchContext = `${sector}, ${region}`;
+    // 1. LIMPEZA DE PARÂMETROS: Remove vírgulas residuais e espaços extras
+    const cleanSector = sector.trim();
+    const cleanRegion = region ? region.trim() : '';
+    
+    // Constrói a query de forma limpa: "Setor em Regiao" ou apenas "Setor"
+    const searchContext = cleanRegion 
+      ? `${cleanSector} em ${cleanRegion}`
+      : cleanSector;
 
     try {
       this.logger.log(`PRODUÇÃO: Consultando Serper.dev (Endpoint /maps) para: "${searchContext}"`);
@@ -27,8 +33,8 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
         'https://google.serper.dev/maps',
         {
           q: searchContext,
-          gl: 'br',
-          hl: 'pt-br',
+          gl: 'br', // Forçar resultados no Brasil
+          hl: 'pt-br', // Idioma em Português
           autocorrect: true
         },
         {
@@ -40,28 +46,22 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
         },
       );
 
-      // DEBUG PROFUNDO: Vamos ver exatamente o que o Google respondeu
       const data = response.data;
       
       if (!data.maps || data.maps.length === 0) {
-        this.logger.warn(`Aviso: O Google Maps não retornou nenhum local para "${searchContext}".`);
+        this.logger.warn(`Zero resultados para: "${searchContext}".`);
         this.logger.debug(`Resposta completa da API: ${JSON.stringify(data)}`);
-        
-        // Tentativa de Fallback: Query simplificada
-        if (searchContext.includes(',')) {
-             this.logger.log('Tentando busca simplificada sem vírgula...');
-             return this.findLeads(sector, ''); // Recursão controlada (cuidado) ou apenas log
-        }
+        return []; // Interrompe o processo sem recursão para evitar loops
       }
 
-      const results = data.maps || [];
+      const results = data.maps;
       
-      // Filtragem e Mapeamento
+      // Filtragem: Apenas locais com telefone e que batam minimamente com o setor (evita spam de outros ramos)
       const leads = results
         .filter((place: any) => {
           const hasPhone = !!place.phoneNumber;
           if (!hasPhone) {
-            this.logger.debug(`Lead descartado por falta de telefone: ${place.title}`);
+            this.logger.debug(`Lead descartado (Sem telefone): ${place.title}`);
           }
           return hasPhone;
         })
@@ -73,7 +73,7 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Sucesso: ${leads.length} leads com telefone extraídos de ${results.length} locais encontrados.`);
+      this.logger.log(`Sucesso: ${leads.length} leads qualificados de ${results.length} encontrados.`);
       
       return leads.slice(0, 10);
 
@@ -81,7 +81,7 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       if (error.response) {
         this.logger.error(`[Serper API Error] Status ${error.response.status}: ${JSON.stringify(error.response.data)}`);
       } else {
-        this.logger.error(`[Network/Config Error] ${error.message}`);
+        this.logger.error(`[Infrastructure Error] ${error.message}`);
       }
       return [];
     }
@@ -90,15 +90,14 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
   private sanitizePhoneNumber(raw: string): string {
     if (!raw) return '';
     
-    // Remove tudo que não é número
     let cleaned = raw.replace(/\D/g, '');
     
-    // Tratamento de prefixos comuns do Brasil capturados pelo Google
-    if (cleaned.startsWith('0')) {
+    // Algumas APIs do Google retornam o 0 do DDD (ex: 086). Removemos para padronizar.
+    if (cleaned.length === 11 && cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
 
-    // Se for um número de 10 ou 11 dígitos, assume que falta o DDI 55
+    // Garante DDI 55 se tiver 10 ou 11 dígitos
     if (cleaned.length === 10 || cleaned.length === 11) {
       cleaned = `55${cleaned}`;
     }
