@@ -17,21 +17,30 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       return [];
     }
 
-    // 1. QUERY OPTIMIZATION: "Setor Região" (Padrão nativo do Google Maps)
-    // Removendo o "em" e a vírgula para dar máxima liberdade ao algoritmo do Google
-    const cleanSector = sector.trim();
-    const cleanRegion = region ? region.trim() : '';
-    const searchContext = `${cleanSector} ${cleanRegion}`.trim();
+    // 1. ESTRATÉGIA DE BUSCA EM DUAS ETAPAS
+    // Tentativa 1: Query específica "Setor Região"
+    const primaryQuery = `${sector} ${region}`.trim();
+    let leads = await this.executeSerperQuery(primaryQuery, apiKey);
 
+    // Tentativa 2: Fallback se a primeira falhar (Query mais abrangente)
+    if (leads.length === 0 && region) {
+      this.logger.log(`Tentativa 2: Refinando busca para "${sector}" em "${region}" com formato alternativo...`);
+      const fallbackQuery = `${sector} em ${region}, Brasil`;
+      leads = await this.executeSerperQuery(fallbackQuery, apiKey);
+    }
+
+    return leads.slice(0, 10);
+  }
+
+  private async executeSerperQuery(query: string, apiKey: string): Promise<ScrapedLead[]> {
     try {
-      this.logger.log(`PRODUÇÃO: Consultando Serper.dev para: "${searchContext}"`);
+      this.logger.log(`Consultando Serper (Maps): "${query}"`);
 
       const response = await axios.post(
         'https://google.serper.dev/maps',
         {
-          q: searchContext,
-          gl: 'br', 
-          hl: 'pt-br',
+          q: query,
+          // Removendo GL/HL temporariamente para testar se a restrição geográfica está bloqueando resultados
           autocorrect: true
         },
         {
@@ -44,24 +53,18 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
       );
 
       const data = response.data;
-      
+
+      // LOG DE DIAGNÓSTICO PROFUNDO: Visível na Railway
       if (!data.maps || data.maps.length === 0) {
-        this.logger.warn(`Zero resultados para: "${searchContext}".`);
-        this.logger.debug(`Estrutura da Resposta: ${JSON.stringify(data)}`);
-        return []; 
+        this.logger.warn(`Google retornou 0 locais para: "${query}".`);
+        this.logger.debug(`Resposta completa da Serper: ${JSON.stringify(data)}`);
+        return [];
       }
 
       const results = data.maps;
       
-      // Mapeamento com saneamento rigoroso
-      const leads = results
-        .filter((place: any) => {
-          const hasPhone = !!place.phoneNumber;
-          if (!hasPhone) {
-            this.logger.debug(`Ignorado (Sem Telefone): ${place.title}`);
-          }
-          return hasPhone;
-        })
+      const scrapedLeads = results
+        .filter((place: any) => !!place.phoneNumber)
         .map((place: any) => ({
           name: place.title,
           phone: this.sanitizePhoneNumber(place.phoneNumber),
@@ -70,16 +73,12 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
           website: place.website,
         }));
 
-      this.logger.log(`Sucesso: ${leads.length} leads qualificados encontrados para "${searchContext}".`);
-      
-      return leads.slice(0, 10);
+      this.logger.log(`Sucesso: ${scrapedLeads.length} leads qualificados de ${results.length} encontrados.`);
+      return scrapedLeads;
 
     } catch (error: any) {
-      if (error.response) {
-        this.logger.error(`[Serper API Error] Status ${error.response.status}: ${JSON.stringify(error.response.data)}`);
-      } else {
-        this.logger.error(`[Infrastructure Error] ${error.message}`);
-      }
+      const errorMsg = error.response ? JSON.stringify(error.response.data) : error.message;
+      this.logger.error(`Falha na Query "${query}": ${errorMsg}`);
       return [];
     }
   }
@@ -88,7 +87,7 @@ export class GoogleMapsLeadSourceAdapter implements ILeadSourceProvider {
     if (!raw) return '';
     let cleaned = raw.replace(/\D/g, '');
     
-    // Padronização para Brasil (DDI 55)
+    // Tratamento para números brasileiros
     if (cleaned.length === 11 && cleaned.startsWith('0')) {
       cleaned = cleaned.substring(1);
     }
