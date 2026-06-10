@@ -16,6 +16,7 @@ import * as Sentry from '@sentry/nestjs';
 import { nodeProfilingIntegration } from '@sentry/profiling-node';
 import helmet from 'helmet';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import * as express from 'express';
 
 async function bootstrap() {
   Sentry.init({
@@ -47,6 +48,10 @@ async function bootstrap() {
     logger,
     rawBody: true,
   });
+
+  // ELEVAÇÃO DE BUFFER DE MEMÓRIA: Aceitar payloads densos de webhooks
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   app.use(helmet());
   app.enableCors();

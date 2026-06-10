@@ -10,8 +10,10 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ITokenServiceToken } from '../../modules/nexthub/auth/application/ports/token-service.port';
-import type { ITokenService } from '../../modules/nexthub/auth/application/ports/token-service.port';
 import { ISessionCacheToken } from '../../modules/nexthub/auth/application/ports/session-cache.port';
+
+// Use import type specifically for interfaces in decorated constructors
+import type { ITokenService } from '../../modules/nexthub/auth/application/ports/token-service.port';
 import type { ISessionCache } from '../../modules/nexthub/auth/application/ports/session-cache.port';
 
 @Injectable()
