@@ -1,15 +1,15 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
-import { GrokAIService } from './grok-ai.service';
+import { GrokAIService } from '../../modules/prospector/infrastructure/ai/grok-ai.service';
+import { OpenAIService } from './openai.service';
+import { OpenRouterAIService } from '../../modules/prospector/infrastructure/ai/open-router-ai.service';
 
 export interface AIOrchestratorRequest {
   context: string;
   message: string;
   history?: { role: 'user' | 'assistant', content: string }[];
-  expectedFormat?: string; 
+  expectedFormat?: string;
+  leadName?: string; // Para sanitização pós-geração
 }
 
 export interface AIOrchestratorResponse<T = any> {
@@ -24,133 +24,115 @@ export class AIOrchestratorEngine {
 
   constructor(
     private readonly configService: ConfigService,
+    private readonly openRouterAI: OpenRouterAIService,
     private readonly grokAI: GrokAIService,
-  ) {}
+    private readonly openAI: OpenAIService,
+  ) { }
 
   async generate<T = any>(request: AIOrchestratorRequest): Promise<AIOrchestratorResponse<T>> {
-    const useMock = this.configService.get<string>('USE_MOCK_AI') === 'true';
+    const strictInstruction = '\n\n[INSTRUÇÃO SEVERA DE AGENDAMENTO]\nÉ TERMINANTEMENTE PROIBIDO inventar, chutar ou gerar links fictícios do Google Meet ou Zoom (como xxx-xxxx-xxx). Se o link real do convite não for explicitamente fornecido pelo [SISTEMA], limite-se a dizer que o convite está sendo enviado para o e-mail do lead.';
+    const systemContext = request.context.includes('É TERMINANTEMENTE PROIBIDO inventar, chutar ou gerar links fictícios')
+      ? request.context
+      : `${request.context}${strictInstruction}`;
 
-    if (useMock) {
-      this.logger.log('--- MOCK AI MODE ACTIVE ---');
-      return this.generateMockResponse<T>(request);
-    }
-
-    const geminiKey = this.configService.get<string>('GOOGLE_GENERATIVE_AI_API_KEY');
-    const openaiKey = this.configService.get<string>('OPENAI_API_KEY');
-
-    const prompt = `
-      CONTEXTO DO SISTEMA:
-      ${request.context}
-      
-      ${request.expectedFormat ? `\nINSTRUÇÕES DE FORMATO OBRIGATÓRIO (JSON):\n${request.expectedFormat}\n` : ''}
-      
-      HISTÓRICO:
-      ${request.history?.map(h => `${h.role.toUpperCase()}: ${h.content}`).join('\n') || 'Nenhum histórico'}
-      
-      MENSAGEM ATUAL DO USUÁRIO: "${request.message}"
-    `;
-
-    // 1. Attempt with Google Gemini (Standardizing on stable aliases)
-    const google = createGoogleGenerativeAI({
-      apiKey: geminiKey || '',
-    });
-
-    const modelsToTry = [
-      'gemini-1.5-flash',
-      'gemini-1.5-pro'
-    ];
-
-    for (const name of modelsToTry) {
-      try {
-        if (!geminiKey) break;
-        this.logger.debug(`Attempting AI inference with model: ${name}`);
-        const { text } = await generateText({
-          model: google(name),
-          prompt,
-          abortSignal: AbortSignal.timeout(30000),
-        });
-        return this.parseResponse<T>(text, !!request.expectedFormat);
-      } catch (err) {
-        this.logger.warn(`Gemini model ${name} failed: ${err.message}`);
-        continue;
-      }
-    }
-
-    // 2. Fallback to Grok (xAI) if Gemini fails
-    this.logger.warn(`Gemini failed or unavailable, trying Grok (xAI) as fallback...`);
-    const grokText = await this.grokAI.generate({
-      system: request.context,
-      prompt: request.message,
-    });
-
-    if (grokText) {
-      return this.parseResponse<T>(grokText, !!request.expectedFormat);
-    }
-
-    // 3. Final Fallback to OpenAI
-    this.logger.warn(`Grok failed or unavailable, trying GPT-4o as final fallback...`);
-
+    // 1. LAYER 1: OpenRouter (Gemini Free) - Cost Zero
     try {
-      if (!openaiKey) throw new Error('OpenAI API key missing');
-
-      const { text } = await generateText({
-        model: openai('gpt-4o'),
-        prompt,
-        abortSignal: AbortSignal.timeout(35000),
+      this.logger.debug('Attempting L1: OpenRouter (Gemini Free)');
+      const text = await this.openRouterAI.generate({
+        system: systemContext,
+        prompt: request.message,
       });
 
-      return this.parseResponse<T>(text, !!request.expectedFormat);
-    } catch (openaiError) {
-      let errorMessage = `AI Final Fallback Error: ${openaiError.message}`;
-      
-      if (openaiError.message.includes('quota') || openaiError.message.includes('billing')) {
-        errorMessage = 'Falha de Faturamento/Quota na OpenAI. Verifique seus créditos.';
-      }
-      
-      this.logger.error(errorMessage);
-      throw new Error(`Falha catastrófica no Motor de IA: Verifique o faturamento da Google (Gemini), xAI (Grok) e OpenAI (GPT).`);
-    }
-  }
-
-  private generateMockResponse<T>(request: AIOrchestratorRequest): AIOrchestratorResponse<T> {
-    // Generate a contextual mock based on the presence of expectedFormat (JSON)
-    if (request.expectedFormat) {
-       const mockJson = {
-          content: "Olá! Notei que você possui uma clínica de excelência. Gostaria de agendar uma breve conversa sobre como podemos otimizar seu fluxo de leads?",
-          intent: "BOOKING",
-          email: "contato@exemplo.com",
-          appointmentDate: new Date(Date.now() + 86400000).toISOString() // Tomorrow
-       };
-       return {
-          content: mockJson.content,
-          extractedData: mockJson as T,
-          rawResponse: JSON.stringify(mockJson)
-       };
+      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+    } catch (err) {
+      this.logger.warn(`OpenRouter failed: ${err.message}`);
     }
 
-    return {
-       content: "Olá, sou o assistente virtual do NextHub (Modo Simulado). Como posso ajudar?",
-       rawResponse: "Olá, sou o assistente virtual do NextHub (Modo Simulado). Como posso ajudar?"
-    };
+    // 2. LAYER 2: xAI Grok (Grok-2) - High Performance Contingency
+    try {
+      this.logger.debug('Attempting L2: Grok-2');
+      const text = await this.grokAI.generate({
+        system: systemContext,
+        prompt: request.message,
+      });
+
+      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+    } catch (err) {
+      this.logger.warn(`Grok-2 failed: ${err.message}`);
+    }
+
+    // 3. LAYER 3: OpenAI (GPT-4o) - Ultimate Fallback
+    try {
+      this.logger.debug('Attempting L3: OpenAI (GPT-4o)');
+      const text = await this.openAI.generate({
+        system: systemContext,
+        prompt: request.message,
+      });
+
+      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+    } catch (err) {
+      this.logger.error(`AI Orchestration Failure: ${err.message}`);
+    }
+
+    throw new Error(`Falha catastrófica: Todos os provedores de IA falharam (OpenRouter, Grok, OpenAI).`);
   }
 
-  private parseResponse<T>(text: string, expectsJson: boolean): AIOrchestratorResponse<T> {
-    const cleanText = text.trim();
+  /**
+   * 2. PARSING TOLERANTE DE PAYLOAD: Extrai JSON de Markdown ou texto puro
+   * Adiciona conversão de Markdown para WhatsApp e sanitização de placeholders.
+   */
+  private parseAndSanitizeResponse<T>(text: string, expectsJson: boolean, leadName?: string): AIOrchestratorResponse<T> {
+    let cleanText = text.trim();
+
+    // REGEX DE COMPATIBILIDADE WHATSAPP: Converte **negrito** para *negrito*
+    cleanText = cleanText.replace(/\*\*(.*?)\*\*/g, "*$1*");
+
+    // SANITIZAÇÃO PÓS-GERAÇÃO: Substitui placeholders pelo nome real ou saudação genérica
+    const templateTags = /{{first_name}}|{{nome}}|{{name}}|{nome}|{name}/gi;
+    if (leadName && leadName !== "Lead") {
+      cleanText = cleanText.replace(templateTags, leadName);
+    } else {
+      cleanText = cleanText.replace(templateTags, "Olá"); // Fallback amigável
+    }
+
     if (expectsJson) {
       try {
         const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)\s*```/) || cleanText.match(/({[\s\S]*})/);
         const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : cleanText;
         const parsed = JSON.parse(jsonString);
+
+        // Sanitize inner content if it exists
+        if (parsed.content) {
+          let innerContent = parsed.content as string;
+          innerContent = innerContent.replace(/\*\*(.*?)\*\*/g, "*$1*");
+
+          if (leadName && leadName !== "Lead") {
+            innerContent = innerContent.replace(templateTags, leadName);
+          } else {
+            innerContent = innerContent.replace(templateTags, "Olá");
+          }
+          parsed.content = innerContent;
+        }
+
         return {
           content: parsed.content || cleanText,
           extractedData: parsed as T,
           rawResponse: cleanText,
         };
       } catch (e) {
-        this.logger.error(`Failed to parse AI JSON response: ${cleanText}`);
+        this.logger.warn(`Failed to parse AI JSON response, falling back to regex extraction.`);
+
+        // Regex Fallback: Tenta extrair o campo "content" se o JSON quebrou mas o texto está lá
+        const contentMatch = cleanText.match(/"content":\s*"(.*?)"/s);
+        if (contentMatch) {
+          return {
+            content: contentMatch[1],
+            rawResponse: cleanText
+          };
+        }
       }
     }
-    
+
     return {
       content: cleanText,
       rawResponse: cleanText,

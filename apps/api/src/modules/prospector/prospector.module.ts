@@ -8,7 +8,8 @@ import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sale
 import { SendOutboundMessageUseCase } from './application/use-cases/send-outbound-message.use-case';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
-import { GrokAIService } from '../../common/engines/grok-ai.service';
+import { OpenRouterAIService } from './infrastructure/ai/open-router-ai.service';
+import { GrokAIService } from './infrastructure/ai/grok-ai.service';
 import { EvolutionWhatsAppClient } from './infrastructure/adapters/evolution-whatsapp.client';
 import { GoogleMapsLeadSourceAdapter } from './infrastructure/adapters/google-maps-lead-source.adapter';
 import { MockLeadSourceAdapter } from './infrastructure/adapters/mock-lead-source.adapter';
@@ -49,6 +50,7 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     LeadScoringService,
     AIChatService,
     GrokAIService,
+    OpenRouterAIService,
     CalendarOrchestratorWorker,
     {
       provide: 'ILeadRepository',
@@ -69,7 +71,6 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     {
       provide: 'ILeadSourceProvider',
       useFactory: (maps: GoogleMapsLeadSourceAdapter, mock: MockLeadSourceAdapter) => {
-        // Toggle: Se estiver em produção ou a flag USE_REAL_LEADS for true, usa o Maps real.
         const useReal = process.env.NODE_ENV === 'production' || process.env.USE_REAL_LEADS === 'true';
         return useReal ? maps : mock;
       },
@@ -89,7 +90,8 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     SendOutboundMessageUseCase,
     LeadScoringService,
     AIChatService,
-    GrokAIService
+    GrokAIService,
+    OpenRouterAIService
   ],
 })
 export class ProspectorModule { }

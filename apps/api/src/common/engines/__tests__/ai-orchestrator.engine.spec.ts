@@ -1,13 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { AIOrchestratorEngine } from '../ai-orchestrator.engine';
 import { ConfigService } from '@nestjs/config';
-import * as ai from 'ai';
-
-jest.mock('ai');
+import { OpenRouterAIService } from '../../../modules/prospector/infrastructure/ai/open-router-ai.service';
+import { GrokAIService } from '../../../modules/prospector/infrastructure/ai/grok-ai.service';
+import { OpenAIService } from '../openai.service';
 
 describe('AIOrchestratorEngine', () => {
   let engine: AIOrchestratorEngine;
-  let configService: ConfigService;
+  let openRouterAI: OpenRouterAIService;
+  let grokAI: GrokAIService;
+  let openAI: OpenAIService;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -23,11 +25,31 @@ describe('AIOrchestratorEngine', () => {
             }),
           },
         },
+        {
+          provide: OpenRouterAIService,
+          useValue: {
+            generate: jest.fn(),
+          },
+        },
+        {
+          provide: GrokAIService,
+          useValue: {
+            generate: jest.fn(),
+          },
+        },
+        {
+          provide: OpenAIService,
+          useValue: {
+            generate: jest.fn(),
+          },
+        },
       ],
     }).compile();
 
     engine = module.get<AIOrchestratorEngine>(AIOrchestratorEngine);
-    configService = module.get<ConfigService>(ConfigService);
+    openRouterAI = module.get<OpenRouterAIService>(OpenRouterAIService);
+    grokAI = module.get<GrokAIService>(GrokAIService);
+    openAI = module.get<OpenAIService>(OpenAIService);
   });
 
   afterEach(() => {
@@ -39,8 +61,8 @@ describe('AIOrchestratorEngine', () => {
   });
 
   describe('generate', () => {
-    it('should use Gemini by default and return successful response', async () => {
-      (ai.generateText as jest.Mock).mockResolvedValue({ text: 'Resposta do Gemini' });
+    it('should use OpenRouter by default and return successful response with strict system instruction appended', async () => {
+      (openRouterAI.generate as jest.Mock).mockResolvedValue('Resposta do Gemini');
 
       const response = await engine.generate({
         context: 'Contexto',
@@ -48,13 +70,17 @@ describe('AIOrchestratorEngine', () => {
       });
 
       expect(response.content).toBe('Resposta do Gemini');
-      expect(ai.generateText).toHaveBeenCalledTimes(1);
+      expect(openRouterAI.generate).toHaveBeenCalledWith({
+        system: 'Contexto\n\n[INSTRUÇÃO SEVERA DE AGENDAMENTO]\nÉ TERMINANTEMENTE PROIBIDO inventar, chutar ou gerar links fictícios do Google Meet ou Zoom (como xxx-xxxx-xxx). Se o link real do convite não for explicitamente fornecido pelo [SISTEMA], limite-se a dizer que o convite está sendo enviado para o e-mail do lead.',
+        prompt: 'Oi',
+      });
+      expect(openRouterAI.generate).toHaveBeenCalledTimes(1);
     });
 
-    it('should fallback to GPT-4o if Gemini fails', async () => {
-      (ai.generateText as jest.Mock)
-        .mockRejectedValueOnce(new Error('Gemini Error'))
-        .mockResolvedValueOnce({ text: 'Resposta do GPT-4o' });
+    it('should fallback to GPT-4o if OpenRouter and Grok fail', async () => {
+      (openRouterAI.generate as jest.Mock).mockRejectedValue(new Error('OpenRouter Error'));
+      (grokAI.generate as jest.Mock).mockRejectedValue(new Error('Grok Error'));
+      (openAI.generate as jest.Mock).mockResolvedValue('Resposta do GPT-4o');
 
       const response = await engine.generate({
         context: 'Contexto',
@@ -62,12 +88,14 @@ describe('AIOrchestratorEngine', () => {
       });
 
       expect(response.content).toBe('Resposta do GPT-4o');
-      expect(ai.generateText).toHaveBeenCalledTimes(2);
+      expect(openRouterAI.generate).toHaveBeenCalledTimes(1);
+      expect(grokAI.generate).toHaveBeenCalledTimes(1);
+      expect(openAI.generate).toHaveBeenCalledTimes(1);
     });
 
     it('should parse JSON if expectedFormat is provided', async () => {
       const jsonResponse = JSON.stringify({ content: 'Olá', intent: 'GREETING' });
-      (ai.generateText as jest.Mock).mockResolvedValue({ text: `\`\`\`json\n${jsonResponse}\n\`\`\`` });
+      (openRouterAI.generate as jest.Mock).mockResolvedValue(`\`\`\`json\n${jsonResponse}\n\`\`\``);
 
       const response = await engine.generate({
         context: 'Contexto',
@@ -79,11 +107,13 @@ describe('AIOrchestratorEngine', () => {
       expect(response.content).toBe('Olá');
     });
 
-    it('should throw error if both models fail', async () => {
-      (ai.generateText as jest.Mock).mockRejectedValue(new Error('Critical Fail'));
+    it('should throw error if all models fail', async () => {
+      (openRouterAI.generate as jest.Mock).mockRejectedValue(new Error('Critical Fail L1'));
+      (grokAI.generate as jest.Mock).mockRejectedValue(new Error('Critical Fail L2'));
+      (openAI.generate as jest.Mock).mockRejectedValue(new Error('Critical Fail L3'));
 
       await expect(engine.generate({ context: 'C', message: 'M' }))
-        .rejects.toThrow('Falha catastrófica no Motor de IA');
+        .rejects.toThrow('Falha catastrófica: Todos os provedores de IA falharam (OpenRouter, Grok, OpenAI).');
     });
   });
 });
