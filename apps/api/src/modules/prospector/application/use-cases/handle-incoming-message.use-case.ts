@@ -15,6 +15,7 @@ export interface IncomingMessageDto {
   externalId: string;
   phone: string;
   text: string;
+  historyContext?: string; // Sincronizado do Webhook
   timestamp: number; // Unix timestamp
   organizationId: string;
   unitId: string;
@@ -48,7 +49,7 @@ export class HandleIncomingMessageUseCase {
   ) {}
 
   async execute(dto: IncomingMessageDto): Promise<void> {
-    const { leadId, phone, organizationId, unitId } = dto;
+    const { leadId, phone, organizationId, unitId, historyContext } = dto;
 
     try {
       // 1. Fetch Context
@@ -64,7 +65,7 @@ export class HandleIncomingMessageUseCase {
 
       const organization = lead.organization;
 
-      // 2. Debounce Harvesting
+      // 2. Debounce Harvesting (Latest interactions since last outbound)
       const lastOutbound = await this.prisma.client.interaction.findFirst({
         where: { leadId, type: 'OUTBOUND' },
         orderBy: { createdAt: 'desc' }
@@ -97,7 +98,6 @@ export class HandleIncomingMessageUseCase {
         ÂNCORA TEMPORAL (UTC-3 - Brasília):
         - Hoje é ${currentDay}, dia ${currentFullDate} (Ano: ${currentYear}).
         - Hora atual: ${currentTime}.
-        - Se o lead disser "amanhã" e hoje for Domingo, considere a segunda-feira seguinte.
         - SEJA PRECISO COM O ANO: O ano atual é ${currentYear}.
       `;
 
@@ -155,63 +155,125 @@ export class HandleIncomingMessageUseCase {
         });
       });
 
-      // 6. ASYNC CALENDAR ORCHESTRATION
+      // 6. SYNCHRONOUS CALENDAR ORCHESTRATION (Forced videoconference link injection)
+      let meetUrl: string | undefined = undefined;
       if (isFinalClosingTriggered && (extractedEmail || lead.email) && extractedDate) {
          const finalEmail = (extractedEmail || lead.email) as string;
-         await this.calendarQueue.add('orchestrate-event', {
-            leadId: lead.id,
-            startTime: extractedDate.toISOString(),
-            attendeeEmail: finalEmail,
-            organizationId,
-            unitId,
-            title: `Agendamento Nexus: ${lead.name}`
-         }, {
-            removeOnComplete: true,
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 5000 }
-         });
+         try {
+           this.logger.log(`Google Calendar (Synchronous): Force creating event with videoconference for ${finalEmail}`);
+           const calendarResult = await this.googleCalendar.createEvent({
+             title: `Agendamento Nexus: ${lead.name}`,
+             startTime: extractedDate,
+             endTime: new Date(extractedDate.getTime() + 30 * 60000), // 30 minutes duration
+             attendeeEmail: finalEmail
+           });
+           
+           meetUrl = calendarResult.meetUrl;
+           this.logger.log(`Google Calendar: Created meeting successfully: ${meetUrl}`);
+
+           // Atomic database update (Appointment & LeadPipeline)
+           await this.prisma.client.$transaction(async (tx) => {
+             await tx.appointment.create({
+               data: {
+                 title: `Agendamento Nexus: ${lead.name}`,
+                 startTime: extractedDate,
+                 endTime: new Date(extractedDate.getTime() + 30 * 60000),
+                 leadId: lead.id,
+                 unitId,
+                 organizationId,
+                 status: 'SCHEDULED',
+                 googleEventId: calendarResult.eventId,
+                 metadata: {
+                   meetUrl,
+                   origin: 'AUTOPILOT_CLOSING'
+                 }
+               }
+             });
+
+             // Telemetria: Update lead pipeline stage
+             await (tx as any).leadPipeline.upsert({
+               where: { leadId: lead.id },
+               update: {
+                 stage: 'REUNIAO_MARCADA',
+                 estimatedValue: 599
+               },
+               create: {
+                 leadId: lead.id,
+                 organizationId,
+                 stage: 'REUNIAO_MARCADA',
+                 estimatedValue: 599
+               }
+             });
+           });
+         } catch (calendarError) {
+           this.logger.error(`Failed to create calendar event synchronously: ${calendarError.message}`);
+           // Fallback to queue if synchronous fails to ensure resilience
+           await this.calendarQueue.add('orchestrate-event', {
+              leadId: lead.id,
+              startTime: extractedDate.toISOString(),
+              attendeeEmail: finalEmail,
+              organizationId,
+              unitId,
+              title: `Agendamento Nexus: ${lead.name}`
+           }, {
+              removeOnComplete: true,
+              attempts: 3,
+              backoff: { type: 'exponential', delay: 5000 }
+           });
+         }
       }
 
       // 7. AI Response Generation
+      const isBusinessHours = this.businessClock.isBusinessHours();
+      
       const fullHistory = await this.prisma.client.interaction.findMany({
         where: { leadId },
         orderBy: { createdAt: 'desc' },
-        take: 10
+        take: 40
       });
 
-      const isBusinessHours = this.businessClock.isBusinessHours();
-
+      // Inject the real meeting link in systemStatus context if available
+      const statusContext = meetUrl 
+        ? `${systemStatus}. O link real do convite gerado é: ${meetUrl}`
+        : systemStatus;
+ 
       const aiResponse = await this.aiChat.generateResponse({
         lead: {
           id: lead.id,
           name: lead.name,
           status: newStatus,
           industry: lead.industry || undefined,
+          region: (lead.metadata as any)?.address?.split('-')[1]?.trim() || 'Brasil',
           email: lead.email || extractedEmail || undefined,
           metadata: lead.metadata
         },
-        fullHistory: fullHistory.reverse().map(h => `${h.type}: ${h.content}`).join('\n'),
         isBusinessHours,
-        systemStatus
+        systemStatus: statusContext,
+        historyOverride: historyContext // PASSING SYNCHRONIZED HISTORY
       }, accumulatedText);
 
-      // 8. Autopilot Engine (OFFLOADING TO WHATSAPP-OUTBOUND QUEUE)
+      // 8. Autopilot Engine
       const isAutopilotActive = organization.enableAutopilot === true || organization.automationMode === 'FULL_AUTOPILOT';
       const isConfirmedSuccess = newStatus === 'CONFIRMADO' && isFinalClosingTriggered;
       const shouldAutoDispatch = isAutopilotActive || isConfirmedSuccess;
 
       const needsApproval = !shouldAutoDispatch && (!isBusinessHours || ['NEW', 'QUALIFYING', 'STALE', 'GATEKEEPER_STAGE'].includes(newStatus));
 
+      let responseText = aiResponse.content;
+      // Inject meeting link in the final response if available and not already present in text
+      if (meetUrl && !responseText.includes(meetUrl)) {
+        responseText = `${responseText}\n\n*Link do Google Meet:* ${meetUrl}`;
+      }
+
       if (needsApproval) {
         await this.prisma.client.lead.update({
           where: { id: lead.id },
-          data: { pendingMessage: aiResponse.content, lastInteractionAt: new Date() }
+          data: { pendingMessage: responseText, lastInteractionAt: new Date() }
         });
       } else {
-        // Dispatch via Outbound Queue for robustness and billing interceptor
         await this.outboundQueue.add('send-message', {
           to: phone,
-          text: aiResponse.content,
+          text: responseText,
           organizationId
         }, {
           removeOnComplete: true,
@@ -222,7 +284,7 @@ export class HandleIncomingMessageUseCase {
         await this.prisma.client.$transaction([
           this.prisma.client.interaction.create({
             data: {
-              content: aiResponse.content,
+              content: responseText,
               type: 'OUTBOUND',
               leadId: lead.id,
               unitId,
@@ -238,7 +300,6 @@ export class HandleIncomingMessageUseCase {
         await this.usageMetering.incrementUsage(organizationId);
       }
 
-      // 9. Lead Scoring
       this.leadScoring.updateLeadScore(lead.id).catch(err => {
         this.logger.error(`Scoring Error: ${err.message}`);
       });

@@ -126,7 +126,7 @@ export class ProspectorController {
         },
         interactions: {
           orderBy: { createdAt: 'desc' },
-          take: 10,
+          take: 40,
           select: { id: true, content: true, type: true, createdAt: true }
         },
         suggestedMessages: {

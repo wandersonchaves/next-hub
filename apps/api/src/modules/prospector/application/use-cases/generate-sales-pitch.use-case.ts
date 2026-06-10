@@ -27,7 +27,7 @@ export class GenerateSalesPitchUseCase {
       include: {
         interactions: {
           orderBy: { createdAt: 'desc' },
-          take: 10
+          take: 40
         }
       }
     });
@@ -44,7 +44,6 @@ export class GenerateSalesPitchUseCase {
     }
 
     // 3. AI Inference via AIChatService
-    const fullHistory = lead.interactions.reverse().map(h => `${h.type}: ${h.content}`).join('\n');
     const isBusinessHours = this.businessClock.isBusinessHours();
 
     const response = await this.aiChat.generateResponse({
@@ -53,10 +52,10 @@ export class GenerateSalesPitchUseCase {
         name: lead.name,
         status: lead.status,
         industry: lead.industry || undefined,
+        region: (lead.metadata as any)?.address?.split('-')[1]?.trim() || 'Brasil', // Access from metadata
         email: lead.email || undefined,
         metadata: lead.metadata
       },
-      fullHistory,
       isBusinessHours,
       systemStatus: 'MANUAL_SUGGESTION_REQUESTED'
     }, "O usuário solicitou uma sugestão de resposta manual agora.");

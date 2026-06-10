@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AIOrchestratorEngine } from '../../../common/engines/ai-orchestrator.engine';
 import { SDRConfigEngine } from '../infrastructure/sdr-config.engine';
+import { PrismaService } from '../../../prisma/prisma.service';
 
 export interface AIChatContext {
   lead: {
@@ -8,12 +9,13 @@ export interface AIChatContext {
     name: string;
     status: string;
     industry?: string;
+    region?: string;
     email?: string;
     metadata?: any;
   };
-  fullHistory: string;
   isBusinessHours: boolean;
   systemStatus: string;
+  historyOverride?: string; 
 }
 
 interface AIChatResponse {
@@ -32,66 +34,60 @@ export class AIChatService {
   constructor(
     private readonly aiOrchestrator: AIOrchestratorEngine,
     private readonly sdrConfig: SDRConfigEngine,
+    private readonly prisma: PrismaService,
   ) {}
 
   async generateResponse(ctx: AIChatContext, message: string): Promise<AIChatResponse> {
-    const nicheContext = this.sdrConfig.getNicheContext(ctx.lead.industry);
-    const plansContext = this.sdrConfig.getPlansContext();
-    
-    const leadEmail = (ctx.lead.email && ctx.lead.email !== 'undefined' && ctx.lead.email !== 'null') 
-      ? ctx.lead.email 
-      : null;
+    let historyString = '';
 
-    const hasSizeData = ctx.lead.metadata?.profiling?.capacityClass || false;
+    if (ctx.historyOverride) {
+      historyString = ctx.historyOverride;
+    } else {
+      const interactions = await this.prisma.client.interaction.findMany({
+        where: { leadId: ctx.lead.id },
+        orderBy: { createdAt: 'asc' },
+        take: 40,
+      });
 
-    // 1. ADVANCED SDR MATRIX (Consultative + Humanized)
-    const salesContext = `
-      VOCÊ É UM CONSULTOR DE SOLUÇÕES (OU ASSISTENTE EXECUTIVO) DO NEXTHUB. Sua voz é natural, transparente e estratégica.
-      NUNCA se apresente como "Diretor". Mantenha a identidade padronizada.
-      
-      ESTÁGIO ATUAL: ${ctx.lead.status}
-      SITUAÇÃO DO SISTEMA: ${ctx.systemStatus}
-      NICHO: ${nicheContext}
+      historyString = interactions
+        .map(i => `${i.type === 'INBOUND' ? 'Lead' : 'SDR'}: ${i.content}`)
+        .join('\n');
+    }
 
-      --- REGRAS DE OURO (VENDAS CONSULTIVAS) ---
-      1. PRICE GUARD (CHECA PORTE ANTES DE PREÇO):
-         - Se o lead pedir preço/planos:
-           - Se NÃO soubermos o porte (${hasSizeData ? 'JÁ SABEMOS' : 'NÃO SABEMOS'}): PROIBIDO dar preço. Pergunte sutilmente: "Para eu te passar o valor exato, hoje vocês têm quantos consultórios e profissionais na unidade?"
-           - Se JÁ soubermos o porte: Apresente a faixa ${plansContext} de forma transparente.
-           - ANCORAGEM DE ROI: Na mesma resposta do preço, mostre que o valor se paga nas primeiras faltas recuperadas.
+    const sector = ctx.lead.industry || 'B2B';
 
-      2. CALENDAR GUARD (SUCESSÃO CRONOLÓGICA):
-         - A ORDEM DEVE SER: 1. Capturar E-mail ➔ 2. Ofertar Horários ➔ 3. Escolha do Lead ➔ 4. Confirmação do Envio.
-         - PARSING FLEXÍVEL: Se o lead sugerir um dia/horário fora das opções (Ex: "quarta as 15h"), ACEITE imediatamente e confirme.
-         - PROIBIDO dizer "Convite enviado" se o LEAD ainda não escolheu um horário específico.
+    // REESTRUTURAÇÃO DO PROMPT DE AGENDAMENTO (Framework SDR Inside Sales)
+    const systemPrompt = `Você é o SDR Automatizado da plataforma NextHub. Seu objetivo é qualificar leads reais e agendar demonstrações de sistemas de gestão B2B.
 
-      3. OBJECTION INTERCEPTOR (POS-AGENDAMENTO):
-         - Se a situação do sistema for "OBJECAO_POS_AGENDAMENTO":
-           - O lead já agendou, mas enviou uma dúvida de última hora (provavelmente preço/planos).
-           - MISSÃO: Responda a dúvida com transparência e ancoragem de ROI, e RECONFIRME o horário que já foi marcado.
-           - Ex: "Claro! Nossos planos variam de X a Y. O bom é que com apenas 2 faltas recuperadas o sistema já se paga. Combinado para amanhã às 15h então? 👋"
+REGRAS ESTRITAS DE VERIFICAÇÃO DE HISTÓRICO:
+1. Leia atentamente TODAS as interações anteriores. É TERMINANTEMENTE PROIBIDO perguntar algo que o lead já respondeu ou repetir uma informação já enviada.
+2. Identifique se palavras-chave como 'Meet', 'Zoom', 'WhatsApp' ou dados de horário/data já foram fornecidos. Se sim, NÃO pergunte novamente; avance imediatamente para a confirmação final ou fechamento da call.
+3. Se o lead aceitar o agendamento e propor um dia/horário específico, responda IMEDIATAMENTE confirmando o recebimento, pergunte a preferência de plataforma (Zoom ou Google Meet) e encerre a interação sem sugerir horários alternativos.
+4. Se o lead pedir preços ou planos, contorne estrategicamente demonstrando o valor de automação para o nicho dele (${sector}), e diga que os valores são flexíveis. Chame-o para uma call de 5 minutos.
+5. Mantenha as mensagens curtas (máximo 3 parágrafos), humanizadas e termine sempre com um CTA claro.
 
-      4. SILENT CLOSE (TOM LOGÍSTICO):
-         - Se o estágio for 'CONFIRMADO' e NÃO houver objeção (situação comum):
-           - PROIBIDO pitch de venda, dores ou ROI.
-           - MISSÃO: Resposta única, curta e celebrativa confirmando o envio. Máximo 1 linha.
+REGRAS DE SINTAXE E FORMATAÇÃO:
+- É TERMINANTEMENTE PROIBIDO utilizar chaves duplas, colchetes ou tags de template como {{first_name}} ou {{nome}} nas saudações. Use saudações diretas e humanas.
+- Toda formatação de destaque ou negrito deve utilizar estritamente a sintaxe do WhatsApp: apenas um asterisco no início e no fim da palavra (Ex: *importante* em vez de **importante**).
+- Nunca gere tabelas em formato Markdown de texto corrido (linhas com barras verticais e traços), pois elas quebram visualmente na tela do celular. Quando precisar listar fatores e valores, utilize listas com marcadores em tópicos limpos.`;
 
-      5. PROATIVIDADE COM DADOS:
-         - Se possuímos o e-mail: "${leadEmail || 'NÃO'}". Sugira confirmação direta.
+    const contextualMessage = `
+STATUS DO SISTEMA: ${ctx.systemStatus}
 
-      --- ONBOARDING PROFILING ---
-      Classifique a capacidade operacional baseada no diálogo.
+HISTÓRICO DE INTERAÇÕES:
+${historyString || 'Nenhuma interação prévia.'}
 
-      HISTÓRICO RECENTE:
-      ${ctx.fullHistory}
+MENSAGEM ATUAL DO LEAD:
+"${message}"
     `;
 
     const response = await this.aiOrchestrator.generate<AIChatResponse>({
-      context: salesContext,
-      message,
+      context: systemPrompt,
+      message: contextualMessage,
+      leadName: ctx.lead.name, // Passando o nome para sanitização
       expectedFormat: `
         {
-          "content": "Sua resposta de WhatsApp (curta, humana, com negrito estratégico)",
+          "content": "Sua resposta curta, empática e focada em agendamento (Sintaxe WhatsApp: *texto*)",
           "operationalProfiling": {
             "staffCount": number,
             "unitsCount": number,
