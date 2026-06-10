@@ -6,7 +6,6 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // 1. Target Discovery & Sanitization
-  // We MUST ensure the target is a full URL with protocol
   let apiTarget = process.env.API_URL || 'http://127.0.0.1:3001';
   if (!apiTarget.startsWith('http')) {
     apiTarget = `https://${apiTarget}`;
@@ -31,6 +30,8 @@ async function bootstrap() {
   });
 
   // 3. PROXY ROUTING: Catch-all /api proxying with DIAGNOSTICS
+  // NOTE: We do NOT use body-parser in the Gateway to avoid consuming the stream 
+  // before it reaches the API. The 50MB limit is enforced at the API level.
   const proxyOptions: any = {
     target: apiTarget,
     changeOrigin: true,
@@ -38,10 +39,8 @@ async function bootstrap() {
     proxyTimeout: 120000, 
     timeout: 120000,      
     onProxyReq: (proxyReq: any, req: any) => {
-      // Diagnostic Log (Visible in Railway logs)
       console.log(`[Gateway Proxy] Forwarding: ${req.method} ${req.url} -> ${apiTarget}${req.url.replace('/api', '')}`);
       
-      // Ensure we don't drop the organization headers
       const orgId = req.headers['x-organization-id'] || req.headers['organization-id'] || req.headers['x-company-id'];
       if (orgId) {
         proxyReq.setHeader('x-organization-id', orgId);
@@ -49,7 +48,6 @@ async function bootstrap() {
       }
     },
     onProxyRes: (proxyRes: any) => {
-      // Prevent HTML leaks on error
       if (proxyRes.statusCode >= 500) {
         proxyRes.headers['content-type'] = 'application/json';
       }
@@ -63,13 +61,12 @@ async function bootstrap() {
       
       res.end(JSON.stringify({ 
         statusCode: 504, 
-        message: 'A comunicação entre o Gateway e a API falhou em produção.',
+        message: 'A comunicação entre o Gateway e a API falhou.',
         debug: {
             method: req.method,
             path: req.url,
             target: apiTarget,
-            reason: err.message,
-            hint: 'Verifique se a API_URL no Railway do Gateway está correta. Ela deve ser a URL INTERNA da API.'
+            reason: err.message
         }
       }));
     },
@@ -80,7 +77,6 @@ async function bootstrap() {
 
   app.use('/api', createProxyMiddleware(proxyOptions));
 
-  // 4. SELF-HEALTHCHECK
   app.getHttpAdapter().get('/gateway-health', (req, res) => {
     res.status(200).json({ 
         status: 'up', 
