@@ -37,19 +37,19 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
   // Sidebar minimization state
   const [isMinimized, setIsMinimized] = useState(false);
 
-  // 1. HYDRATION STATE GUARD: Intercept unauthenticated users immediately
+  // 1. HYDRATION GUARD / SPLASH: Prevent flashes of internal content
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.replace("/login");
     }
   }, [isLoaded, isSignedIn, router]);
 
-  // 2. EXPURGO DE LISTENERS: Keep only 'blur' for auto-minimization
+  // 2. FOCUS MANAGEMENT: Removed 'focus' listener to eliminate elastic behavior.
+  // ONLY 'blur' is kept for auto-minimization when switching tabs.
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const handleBlur = () => setIsMinimized(true);
-    // REMOVED: handleFocus listener that expanded the menu automatically
 
     window.addEventListener("blur", handleBlur);
 
@@ -80,13 +80,26 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
 
   const currentUnit = config?.units.find(u => u.id === activeUnitId) || config?.units[0];
 
-  // While auth is not loaded, show nothing to avoid UI flashes/hydration errors
+  // Splash Screen for Hydration & Session Sync
   if (!isLoaded || !isSignedIn) {
-    return null;
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background transition-colors duration-500">
+        <div className="flex flex-col items-center gap-6">
+           <div className="relative">
+              <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+              <div className="absolute inset-0 flex items-center justify-center font-black text-primary">N</div>
+           </div>
+           <div className="flex flex-col items-center gap-1">
+              <p className="text-xs font-black uppercase tracking-widest text-foreground animate-pulse">Sincronizando Sessão</p>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight opacity-50">NextHub Staff Cloud Guard</p>
+           </div>
+        </div>
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen bg-background text-foreground selection:bg-primary/10 overflow-hidden">
+    <div className="flex h-screen bg-background text-foreground selection:bg-primary/10 overflow-hidden font-sans">
       {/* Sidebar - Desktop */}
       <aside className={cn(
         "hidden md:flex flex-col border-r bg-card/50 backdrop-blur-xl transition-all duration-300 ease-in-out",
@@ -95,7 +108,7 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
         <div className={cn("p-8 flex flex-col gap-6", isMinimized && "p-4 items-center")}>
           <div className="flex items-center gap-3 font-black text-2xl tracking-tighter cursor-default">
             <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center text-primary-foreground shadow-2xl shadow-primary/20 font-black shrink-0">N</div>
-            {!isMinimized && <span>NextHub</span>}
+            {!isMinimized && <span className="animate-in fade-in duration-500">NextHub</span>}
           </div>
           
           {!isMinimized && (
