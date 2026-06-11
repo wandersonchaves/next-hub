@@ -353,7 +353,7 @@ export default function LeadChatPage() {
                 </div>
                 <div>
                    <p className="text-[10px] text-muted-foreground leading-none mb-1 font-bold uppercase">Setor Normalizado</p>
-                   <p className="text-xs font-black text-indigo-900 tracking-tight">{lead.industry || 'B2B GERAL'}</p>
+                   <p className="text-xs font-black text-indigo-900 tracking-tight">{lead.industry}</p>
                 </div>
              </div>
           </div>

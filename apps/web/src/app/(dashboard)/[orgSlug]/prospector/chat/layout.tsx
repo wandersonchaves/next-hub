@@ -124,7 +124,7 @@ export default function ProspectorChatLayout({
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground truncate mb-2 italic">
-                {lead.industry || 'Nicho não identificado'}
+                {lead.industry}
               </p>
               <div className="flex justify-between items-center">
                 <StateBadge state={lead.status as ProspectorState} className="text-[8px] px-2 py-0" />
