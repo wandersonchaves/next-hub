@@ -5,6 +5,8 @@ export interface LeadUpdateEvent {
   leadId: string;
   status: string;
   scoreIA: number;
+  type?: string;
+  newLeadId?: string;
 }
 
 @Injectable()

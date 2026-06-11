@@ -72,7 +72,8 @@ export class WhatsAppWebhookController {
           status: true,
           unitId: true,
           organizationId: true,
-          metadata: true
+          metadata: true,
+          industry: true
         }
       });
 
@@ -98,6 +99,72 @@ export class WhatsAppWebhookController {
       WhatsAppWebhookController.activeLocks.add(lead.id);
 
       try {
+        // [GATEKEEPER BYPASS INTERCEPTOR]
+        if (lead.status === 'GATEKEEPER_STAGE') {
+          const newPhone = extractPhoneNumber(messageContent);
+          if (newPhone && newPhone !== lead.phone) {
+            this.logger.log(`GATEKEEPER BYPASS: Phone ${newPhone} extracted from lead ${lead.id}`);
+            
+            await tx.interaction.create({
+              data: {
+                externalId,
+                content: messageContent,
+                type: 'INBOUND',
+                leadId: lead.id,
+                unitId: lead.unitId,
+                organizationId: lead.organizationId,
+                createdAt: messageDate,
+              }
+            });
+
+            await tx.lead.update({
+              where: { id: lead.id },
+              data: {
+                status: 'ARCHIVED_GATEKEEPER',
+                lastInteractionAt: messageDate
+              }
+            });
+
+            const newLeadName = lead.name.includes('Lead') ? 'Lead Decisor' : `${lead.name} (Decisor)`;
+            let newLead = await tx.lead.findFirst({
+              where: { phone: newPhone, organizationId: lead.organizationId }
+            });
+
+            if (!newLead) {
+              newLead = await tx.lead.create({
+                data: {
+                  name: newLeadName,
+                  phone: newPhone,
+                  status: 'NEW',
+                  score: 0,
+                  industry: lead.industry,
+                  organizationId: lead.organizationId,
+                  unitId: lead.unitId,
+                  metadata: {}
+                }
+              });
+            } else {
+              newLead = await tx.lead.update({
+                where: { id: newLead.id },
+                data: {
+                  status: 'NEW',
+                  score: 0
+                }
+              });
+            }
+
+            this.sseService.broadcast({
+              leadId: lead.id,
+              status: 'ARCHIVED_GATEKEEPER',
+              scoreIA: lead.score,
+              type: 'CLEAR_CHAT_VIEW',
+              newLeadId: newLead.id
+            });
+
+            return { status: 'accepted', externalId, bypassed: true, newLeadId: newLead.id };
+          }
+        }
+
         const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
         const hasEmailInMessage = emailRegex.test(messageContent);
         const hasEmailInDb = !!(lead.email && lead.email.includes('@'));
@@ -300,3 +367,26 @@ function parseRelativeDate(text: string): { startTime: Date; endTime: Date } | n
   
   return { startTime, endTime };
 }
+
+function extractPhoneNumber(text: string): string | null {
+  const match = text.match(/(?:\+?55\s?)?\(?[1-9][0-9]\)?\s?9?[0-9]{4}[-\s]?[0-9]{4}/);
+  if (match) {
+    let digits = match[0].replace(/\D/g, '');
+    if (digits.length === 10 || digits.length === 11) {
+      if (!digits.startsWith('55')) {
+        digits = '55' + digits;
+      }
+      return digits;
+    }
+  }
+  const digitsOnlyMatch = text.replace(/\s+/g, '').match(/\d{10,11}/);
+  if (digitsOnlyMatch) {
+    let digits = digitsOnlyMatch[0];
+    if (!digits.startsWith('55')) {
+      digits = '55' + digits;
+    }
+    return digits;
+  }
+  return null;
+}
+
