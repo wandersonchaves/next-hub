@@ -18,8 +18,27 @@ export class GoogleCalendarService {
   async createEvent(dto: CreateEventDto): Promise<{ eventId: string; meetUrl: string }> {
     this.logger.log(`Google Calendar: Creating event "${dto.title}" with Meet for ${dto.attendeeEmail}`);
     
-    // In a production environment, this would call the Google Calendar API with:
-    // conferenceData: { createRequest: { requestId: uuidv4() } }
+    // Payload enviado para a API do Google Calendar com fuso horário brasileiro explícito
+    const googleEventPayload = {
+      summary: dto.title,
+      start: {
+        dateTime: dto.startTime.toISOString(),
+        timeZone: 'America/Fortaleza'
+      },
+      end: {
+        dateTime: dto.endTime.toISOString(),
+        timeZone: 'America/Fortaleza'
+      },
+      attendees: [{ email: dto.attendeeEmail }],
+      conferenceData: {
+        createRequest: {
+          requestId: uuidv4(),
+          conferenceSolutionKey: { type: 'hangoutsMeet' }
+        }
+      }
+    };
+
+    this.logger.debug(`Google Calendar API Payload: ${JSON.stringify(googleEventPayload)}`);
     
     const mockEventId = `google-event-${uuidv4().substring(0, 8)}`;
     const mockMeetUrl = `https://meet.google.com/${uuidv4().substring(0, 4)}-${uuidv4().substring(0, 4)}-${uuidv4().substring(0, 4)}`;
