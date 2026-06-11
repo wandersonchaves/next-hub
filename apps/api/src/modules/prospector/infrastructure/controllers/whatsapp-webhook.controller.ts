@@ -130,11 +130,24 @@ export class WhatsAppWebhookController {
           updatedStatus = 'Meeting_Scheduled';
 
           try {
+            const parsedDates = parseRelativeDate(messageContent) || {
+              startTime: (() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                d.setHours(14, 0, 0, 0);
+                return d;
+              })(),
+              endTime: (() => {
+                const d = new Date();
+                d.setDate(d.getDate() + 1);
+                d.setHours(14, 30, 0, 0);
+                return d;
+              })()
+            };
+
+            const startTime = parsedDates.startTime;
+            const endTime = parsedDates.endTime;
             const title = `Reunião NextHub - ${lead.name}`;
-            const startTime = new Date();
-            startTime.setDate(startTime.getDate() + 1);
-            startTime.setHours(14, 0, 0, 0);
-            const endTime = new Date(startTime.getTime() + 30 * 60000);
 
             const calendarResult = await this.googleCalendar.createEvent({
               title,
@@ -158,7 +171,8 @@ export class WhatsAppWebhookController {
                 googleEventId: calendarEventId,
                 metadata: {
                   meetUrl,
-                  origin: 'WEBHOOK_SYNCHRONOUS'
+                  origin: 'WEBHOOK_SYNCHRONOUS',
+                  scheduledTime: startTime.toISOString()
                 }
               }
             });
@@ -244,4 +258,45 @@ export class WhatsAppWebhookController {
       }
     });
   }
+}
+
+function parseRelativeDate(text: string): { startTime: Date; endTime: Date } | null {
+  const normalized = text.toLowerCase();
+  let date = new Date();
+  
+  if (normalized.includes('amanhã') || normalized.includes('amanha')) {
+    date.setDate(date.getDate() + 1);
+  } else if (normalized.includes('hoje')) {
+    // Keep today
+  } else {
+    date.setDate(date.getDate() + 1);
+  }
+  
+  let hours = 14;
+  let minutes = 0;
+  
+  const timeRegex = /(?:às|as|at)?\s*(\d{1,2})(?:h|:(\d{2}))/i;
+  const match = normalized.match(timeRegex);
+  if (match) {
+    hours = parseInt(match[1], 10);
+    if (match[2]) {
+      minutes = parseInt(match[2], 10);
+    }
+  } else {
+    const simpleHourRegex = /(?:às|as|at)\s*(\d{1,2})\b/i;
+    const simpleMatch = normalized.match(simpleHourRegex);
+    if (simpleMatch) {
+      hours = parseInt(simpleMatch[1], 10);
+    }
+  }
+  
+  if (hours < 0 || hours > 23) hours = 14;
+  if (minutes < 0 || minutes > 59) minutes = 0;
+  
+  const startTime = new Date(date);
+  startTime.setHours(hours, minutes, 0, 0);
+  
+  const endTime = new Date(startTime.getTime() + 30 * 60000);
+  
+  return { startTime, endTime };
 }
