@@ -20,9 +20,9 @@ export class TenantContextGuard implements CanActivate {
     const user = request.user;
     const organization = request.organization;
 
-    // Capture IDs from headers
-    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'];
-    const unitId = request.headers['x-unit-id'] || request.headers['unit-id'];
+    // Capture IDs from headers or query params
+    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'] || request.query?.['x-organization-id'] || request.query?.['organizationId'];
+    const unitId = request.headers['x-unit-id'] || request.headers['unit-id'] || request.query?.['x-unit-id'] || request.query?.['unitId'];
 
     if (!user) {
       return false;

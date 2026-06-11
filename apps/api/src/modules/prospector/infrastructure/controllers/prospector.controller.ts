@@ -1,11 +1,13 @@
-import { Controller, Post, Body, UseGuards, Get, Headers, Param, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UseGuards, Get, Headers, Param, BadRequestException, Sse, MessageEvent } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { Observable } from 'rxjs';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { HandleIncomingMessageUseCase } from '../../application/use-cases/handle-incoming-message.use-case';
 import { SourceLeadsUseCase } from '../../application/use-cases/source-leads.use-case';
 import { GenerateSalesPitchUseCase } from '../../application/use-cases/generate-sales-pitch.use-case';
 import { SendOutboundMessageUseCase } from '../../application/use-cases/send-outbound-message.use-case';
+import { ProspectorSseService } from '../../services/prospector-sse.service';
 import { MultiLevelAuthGuard } from '../../../../common/guards/multi-level-auth.guard';
 import { MembershipGuard } from '../../../../common/guards/membership.guard';
 import { TenantContextGuard } from '../../../../common/guards/tenant-context.guard';
@@ -28,8 +30,15 @@ export class ProspectorController {
     private readonly sourceLeadsUseCase: SourceLeadsUseCase,
     private readonly generatePitchUseCase: GenerateSalesPitchUseCase,
     private readonly sendMessageUseCase: SendOutboundMessageUseCase,
+    private readonly sseService: ProspectorSseService,
     @InjectQueue('proactive-prospecting') private readonly proactiveQueue: Queue,
   ) { }
+
+  @Sse('sse')
+  @ApiOperation({ summary: 'Stream lead updates in real-time via SSE' })
+  sse(): Observable<MessageEvent> {
+    return this.sseService.getUpdates() as Observable<MessageEvent>;
+  }
 
   @Post('chat')
   @ApiOperation({ summary: 'Simulate manual chat interaction' })

@@ -8,6 +8,7 @@ import { ProactiveSearchWidget } from "@/components/prospector/proactive-search-
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@/providers/auth-provider";
 import { useState, useEffect, useCallback } from "react";
 import { 
   Users, 
@@ -31,6 +32,7 @@ interface Lead {
 export default function ProspectorDashboard({ params }: { params: { orgSlug: string } }) {
   const { orgSlug } = params;
   const { fetcher } = useApi();
+  const { getToken, orgId } = useAuth();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,6 +51,62 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
   useEffect(() => {
     loadLeads();
   }, [loadLeads]);
+
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let retryTimeout: NodeJS.Timeout | null = null;
+
+    const connectSSE = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        const unitId = typeof window !== 'undefined' ? localStorage.getItem('x-unit-id') || '' : '';
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
+        
+        const url = `${apiBase}/modules/prospector/sse?token=${encodeURIComponent(token)}&organizationId=${encodeURIComponent(orgId || '')}&unitId=${encodeURIComponent(unitId)}`;
+        
+        eventSource = new EventSource(url);
+
+        eventSource.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            const { leadId, status, scoreIA } = parsed;
+            if (leadId) {
+              setLeads((prevLeads) =>
+                prevLeads.map((l) =>
+                  l.id === leadId
+                    ? { ...l, status, score: scoreIA, lastInteractionAt: new Date().toISOString() }
+                    : l
+                )
+              );
+            }
+          } catch (e) {
+            console.error("Error parsing SSE message:", e);
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.warn("SSE connection error, retrying in 5 seconds...", err);
+          eventSource?.close();
+          retryTimeout = setTimeout(connectSSE, 5000);
+        };
+      } catch (err) {
+        console.error("Failed to setup SSE", err);
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [getToken, orgId]);
 
   const columns = [
     { 

@@ -21,6 +21,7 @@ import { SDRConfigEngine } from './infrastructure/sdr-config.engine';
 import { GoogleCalendarService } from './infrastructure/google-calendar.service';
 import { LeadScoringService } from './application/lead-scoring.service';
 import { AIChatService } from './services/ai-chat.service';
+import { ProspectorSseService } from './services/prospector-sse.service';
 import { TenantContextModule } from '../../common/utils/tenant-context/tenant-context.module';
 import { CalendarOrchestratorWorker } from '../../common/workers/calendar-orchestrator.worker';
 import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
@@ -49,6 +50,7 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     GoogleCalendarService,
     LeadScoringService,
     AIChatService,
+    ProspectorSseService,
     GrokAIService,
     OpenRouterAIService,
     CalendarOrchestratorWorker,
@@ -90,6 +92,7 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
     SendOutboundMessageUseCase,
     LeadScoringService,
     AIChatService,
+    ProspectorSseService,
     GrokAIService,
     OpenRouterAIService
   ],

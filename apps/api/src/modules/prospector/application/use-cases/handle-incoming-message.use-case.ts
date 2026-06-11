@@ -9,6 +9,7 @@ import { GoogleCalendarService } from '../../infrastructure/google-calendar.serv
 import { LeadScoringService } from '../lead-scoring.service';
 import { UsageMeteringService } from '../../../nexthub/application/usage-metering.service';
 import { AIChatService } from '../../services/ai-chat.service';
+import { ProspectorSseService } from '../../services/prospector-sse.service';
 
 export interface IncomingMessageDto {
   leadId: string;
@@ -44,6 +45,7 @@ export class HandleIncomingMessageUseCase {
     private readonly leadScoring: LeadScoringService,
     private readonly usageMetering: UsageMeteringService,
     private readonly aiChat: AIChatService,
+    private readonly sseService: ProspectorSseService,
     @InjectQueue('calendar-orchestrator') private readonly calendarQueue: Queue,
     @InjectQueue('whatsapp-outbound') private readonly outboundQueue: Queue,
   ) {}
@@ -153,6 +155,13 @@ export class HandleIncomingMessageUseCase {
             pendingMessage: null 
           }
         });
+      });
+
+      // Broadcast lead status update immediately
+      this.sseService.broadcast({
+        leadId: lead.id,
+        status: newStatus,
+        scoreIA: lead.score
       });
 
       // 6. SYNCHRONOUS CALENDAR ORCHESTRATION (Forced videoconference link injection)

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { AIOrchestratorEngine } from '../../../common/engines/ai-orchestrator.engine';
+import { ProspectorSseService } from '../services/prospector-sse.service';
 
 @Injectable()
 export class LeadScoringService {
@@ -9,6 +10,7 @@ export class LeadScoringService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly aiOrchestrator: AIOrchestratorEngine,
+    private readonly sseService: ProspectorSseService,
   ) {}
 
   /**
@@ -53,9 +55,16 @@ export class LeadScoringService {
 
       const finalScore = scoringResult.extractedData?.score ?? lead.score;
 
-      await this.prisma.client.lead.update({
+      const updatedLead = await this.prisma.client.lead.update({
         where: { id: leadId },
-        data: { score: finalScore }
+        data: { score: finalScore },
+        select: { id: true, status: true, score: true }
+      });
+
+      this.sseService.broadcast({
+        leadId: updatedLead.id,
+        status: updatedLead.status,
+        scoreIA: updatedLead.score
       });
 
       this.logger.debug(`Lead Scoring: ${lead.name} updated to ${finalScore}`);

@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { PrismaService } from '../../../../prisma/prisma.service';
 import { GoogleCalendarService } from '../../infrastructure/google-calendar.service';
+import { ProspectorSseService } from '../../services/prospector-sse.service';
 
 @ApiTags('Nexus Prospector Webhooks')
 @Controller('webhooks/whatsapp')
@@ -17,6 +18,7 @@ export class WhatsAppWebhookController {
     @InjectQueue('whatsapp-inbound') private readonly whatsappQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly googleCalendar: GoogleCalendarService, // Injetado para amarração/alinhamento com o worker
+    private readonly sseService: ProspectorSseService,
   ) {}
 
   @Post('evolution')
@@ -222,6 +224,13 @@ export class WhatsAppWebhookController {
           removeOnComplete: true,
           attempts: 3,
           backoff: { type: 'exponential', delay: 2000 }
+        });
+
+        // Broadcast lead update to SSE clients
+        this.sseService.broadcast({
+          leadId: lead.id,
+          status: updatedStatus,
+          scoreIA: updatedScore
         });
 
         return { status: 'accepted', externalId };

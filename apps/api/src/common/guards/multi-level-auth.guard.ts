@@ -54,8 +54,8 @@ export class MultiLevelAuthGuard implements CanActivate {
     request['user'] = user;
 
     // Headers
-    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'] || request.headers['organization-id'];
-    const unitId = request.headers['x-unit-id'] || request.headers['unit-id'];
+    const companyId = request.headers['x-company-id'] || request.headers['x-organization-id'] || request.headers['organization-id'] || request.query?.['x-organization-id'] || request.query?.['organizationId'];
+    const unitId = request.headers['x-unit-id'] || request.headers['unit-id'] || request.query?.['x-unit-id'] || request.query?.['unitId'];
 
     // 4. RULE: Super-Admin Bypass
     const adminId = this.configService.get<string>('ADMIN_ID');
@@ -99,6 +99,8 @@ export class MultiLevelAuthGuard implements CanActivate {
 
   private extractTokenFromHeader(request: any): string | undefined {
     const [type, token] = request.headers.authorization?.split(' ') ?? [];
-    return type === 'Bearer' ? token : undefined;
+    if (type === 'Bearer') return token;
+    if (request.query?.token) return request.query.token;
+    return undefined;
   }
 }
