@@ -54,7 +54,17 @@ export class AIChatService {
         .join('\n');
     }
 
-    const sector = ctx.lead.industry || 'estética/pet';
+    // Resolve sector for static knowledge base mapping
+    let matchedSector = 'CLINICA DE ESTETICA';
+    if (ctx.lead.industry) {
+      const normalizedIndustry = ctx.lead.industry.toUpperCase().trim();
+      if (normalizedIndustry.includes('PET') || normalizedIndustry.includes('VET')) {
+        matchedSector = 'PET SHOP';
+      } else if (normalizedIndustry.includes('ESTETICA') || normalizedIndustry.includes('CLINICA')) {
+        matchedSector = 'CLINICA DE ESTETICA';
+      }
+    }
+
     const hasEmail = !!(ctx.lead.email && ctx.lead.email !== 'undefined' && ctx.lead.email !== 'null');
 
     // REESTRUTURAÇÃO DO PROMPT DE AGENDAMENTO (Framework SDR Inside Sales)
@@ -100,6 +110,7 @@ MENSAGEM ATUAL DO LEAD:
       context: systemPrompt,
       message: contextualMessage,
       leadName: ctx.lead.name, // Passando o nome para sanitização
+      sector: matchedSector, // Passando o setor para indexação do Knowledge Base
       expectedFormat: `
         {
           "content": "Sua resposta curta, empática e focada em agendamento (Sintaxe WhatsApp: *texto*)",

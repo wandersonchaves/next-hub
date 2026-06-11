@@ -10,6 +10,7 @@ export interface AIOrchestratorRequest {
   history?: { role: 'user' | 'assistant', content: string }[];
   expectedFormat?: string;
   leadName?: string; // Para sanitização pós-geração
+  sector?: string; // Para indexação do Knowledge Base
 }
 
 export interface AIOrchestratorResponse<T = any> {
@@ -17,6 +18,31 @@ export interface AIOrchestratorResponse<T = any> {
   extractedData?: T;
   rawResponse: string;
 }
+
+interface SectorConfig {
+  nomeSistema: string;
+  terminologiaClientes: string;
+  terminologiaProfissionais: string;
+  valores: string;
+  dores: string;
+}
+
+const SECTOR_KNOWLEDGE_BASE: Record<string, SectorConfig> = {
+  'CLINICA DE ESTETICA': {
+    nomeSistema: 'NextHub Estética',
+    terminologiaClientes: 'pacientes',
+    terminologiaProfissionais: 'médicos',
+    valores: 'planos mensais a partir de R$ 200 para até 5 profissionais (pequeno porte), e entre R$ 400 e R$ 900 para clínicas de médio e grande porte',
+    dores: 'no-show de pacientes, falta de engajamento no pós-tratamento e dificuldade no controle de agenda dos médicos especialistas',
+  },
+  'PET SHOP': {
+    nomeSistema: 'NextHub Pet',
+    terminologiaClientes: 'tutores',
+    terminologiaProfissionais: 'veterinários',
+    valores: 'planos mensais a partir de R$ 200 para até 5 profissionais (pequeno porte), e entre R$ 400 e R$ 900 para pet shops/clínicas veterinárias de médio e grande porte',
+    dores: 'esquecimento de banho e tosa por parte dos tutores, controle ineficiente de vacinas/consultas com veterinários e baixa recorrência de serviços básicos',
+  }
+};
 
 @Injectable()
 export class AIOrchestratorEngine {
@@ -30,9 +56,39 @@ export class AIOrchestratorEngine {
   ) { }
 
   async generate<T = any>(request: AIOrchestratorRequest): Promise<AIOrchestratorResponse<T>> {
-    const strictInstruction = `
+    // Resolve sector configuration
+    let sectorKey = 'CLINICA DE ESTETICA'; // Default fallback
+    
+    if (request.sector) {
+      const reqSec = request.sector.toUpperCase().trim();
+      if (reqSec.includes('PET') || reqSec.includes('VET')) {
+        sectorKey = 'PET SHOP';
+      } else if (reqSec.includes('ESTETICA') || reqSec.includes('CLINICA')) {
+        sectorKey = 'CLINICA DE ESTETICA';
+      }
+    } else {
+      // Try to infer from context
+      const normalizedContext = request.context.toUpperCase();
+      if (normalizedContext.includes('PET') || normalizedContext.includes('TUTOR') || normalizedContext.includes('VET')) {
+        sectorKey = 'PET SHOP';
+      }
+    }
 
-[INSTRUÇÃO SEVERA DE AGENDAMENTO E RITMO COMERCIAL]
+    const configSetor = SECTOR_KNOWLEDGE_BASE[sectorKey];
+
+    const strictInstruction = `
+        Você é o Consultor SDR Avançado do ${configSetor.nomeSistema}. Seu tom deve ser extremamente educado, refinado, empático e de alto nível corporativo. Trate o lead com o máximo respeito, fazendo-o se sentir especial e único.
+
+**DIRETRIZES DE PROSPECÇÃO PARA O SETOR [${sectorKey}]:**
+- Utilize estritamente a terminologia do segmento. Refira-se aos clientes como *${configSetor.terminologiaClientes}* e aos especialistas como *${configSetor.terminologiaProfissionais}*.
+- Baseie-se exclusivamente nesta tabela de valores autorizada: ${configSetor.valores}. É proibido inventar qualquer outro preço.
+- Foque na dor principal mapeada do setor: ${configSetor.dores}.
+
+**REGRAS DE CONDUTA CONVERSACIONAL:**
+- Se o lead fizer uma pergunta sobre processos ou valores, responda de forma cortês à dúvida dele primeiro. Não repita o bloco de convite de agendamento de forma idêntica se ele mudou o foco. Mantenha o ritmo calmo.
+- Utilize formatação de negrito padrão do WhatsApp utilizando apenas um asterisco (Ex: *amanhã às 15h*). Nunca utilize dois asteriscos.
+
+**INSTRUÇÃO SEVERA DE AGENDAMENTO E RITMO COMERCIAL:**
 - É TERMINANTEMENTE PROIBIDO inventar, chutar ou gerar links fictícios do Google Meet ou Zoom (como xxx-xxxx-xxx). Se o link real do convite não for explicitamente fornecido pelo [SISTEMA], limite-se a dizer que o convite está sendo enviado para o e-mail do lead.
 - Você é o SDR Automatizado de Elite do NextHub. Seu objetivo é conduzir uma conversa humana, educada, concisa e SEM PRESSA para agendar reuniões qualificadas.
 
@@ -44,6 +100,7 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
    - Passo B: Resposta empática focando em como a nossa automação sana exatamente a dor descrita pelo lead.
    - Passo C: Só após o lead demonstrar interesse ou responder, proponha a demonstração de 5 minutos e solicite o e-mail/canal.
 4. FORMATO: Responda em parágrafos curtos (no máximo 2 ou 3 linhas por bloco), usando espaçamentos limpos e formatação de negrito nativa do WhatsApp (*texto*), reduzindo a densidade do texto e garantindo uma abordagem sem pressa.`;
+
     const systemContext = request.context.includes('INSTRUÇÃO SEVERA DE AGENDAMENTO E RITMO COMERCIAL')
       ? request.context
       : `${request.context}${strictInstruction}`;
