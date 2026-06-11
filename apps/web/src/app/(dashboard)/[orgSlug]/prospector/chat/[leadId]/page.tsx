@@ -41,7 +41,7 @@ interface Lead {
 }
 
 export default function LeadChatPage() {
-  const { leadId } = useParams() as { leadId: string };
+  const { leadId, orgSlug } = useParams() as { leadId: string; orgSlug: string };
   const { fetcher } = useApi();
   const router = useRouter();
   const { getToken, orgId } = useAuth();
@@ -89,9 +89,16 @@ export default function LeadChatPage() {
         eventSource.onmessage = (event) => {
           try {
             const parsed = JSON.parse(event.data);
-            const { leadId: updatedLeadId } = parsed;
+            const { leadId: updatedLeadId, type, newLeadId } = parsed;
             
             if (updatedLeadId === leadId) {
+              if (type === 'CLEAR_CHAT_VIEW' && newLeadId) {
+                // Force clearing message array
+                setLead(prev => prev ? { ...prev, interactions: [] } : null);
+                // Redirect to new decisor lead
+                router.push(`/${orgSlug}/prospector/chat/${newLeadId}`);
+                return;
+              }
               loadLead();
               router.refresh();
             }
@@ -120,7 +127,7 @@ export default function LeadChatPage() {
         clearTimeout(retryTimeout);
       }
     };
-  }, [getToken, orgId, leadId, loadLead, router]);
+  }, [getToken, orgId, leadId, orgSlug, loadLead, router]);
 
   useEffect(() => {
     if (scrollRef.current) {
