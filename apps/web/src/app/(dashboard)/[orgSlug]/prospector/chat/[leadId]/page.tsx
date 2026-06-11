@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { StateBadge, ProspectorState } from "@/components/prospector/state-badge";
 import { ROICalculator } from "@/components/prospector/roi-calculator";
 import { useApi } from "@/hooks/use-api";
+import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
 import { 
   Send, 
@@ -42,6 +43,8 @@ interface Lead {
 export default function LeadChatPage() {
   const { leadId } = useParams() as { leadId: string };
   const { fetcher } = useApi();
+  const router = useRouter();
+  const { getToken, orgId } = useAuth();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [lead, setLead] = useState<Lead | null>(null);
@@ -66,6 +69,58 @@ export default function LeadChatPage() {
     const interval = setInterval(loadLead, 5000); 
     return () => clearInterval(interval);
   }, [loadLead]);
+
+  useEffect(() => {
+    let eventSource: EventSource | null = null;
+    let retryTimeout: NodeJS.Timeout | null = null;
+
+    const connectSSE = async () => {
+      try {
+        const token = await getToken();
+        if (!token) return;
+
+        const unitId = typeof window !== 'undefined' ? localStorage.getItem('x-unit-id') || '' : '';
+        const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
+        
+        const url = `${apiBase}/modules/prospector/sse?token=${encodeURIComponent(token)}&organizationId=${encodeURIComponent(orgId || '')}&unitId=${encodeURIComponent(unitId)}`;
+        
+        eventSource = new EventSource(url);
+
+        eventSource.onmessage = (event) => {
+          try {
+            const parsed = JSON.parse(event.data);
+            const { leadId: updatedLeadId } = parsed;
+            
+            if (updatedLeadId === leadId) {
+              loadLead();
+              router.refresh();
+            }
+          } catch (e) {
+            console.error("Error parsing SSE message in Chat:", e);
+          }
+        };
+
+        eventSource.onerror = (err) => {
+          console.warn("SSE connection error in Chat, retrying in 5 seconds...", err);
+          eventSource?.close();
+          retryTimeout = setTimeout(connectSSE, 5000);
+        };
+      } catch (err) {
+        console.error("Failed to setup SSE in Chat", err);
+      }
+    };
+
+    connectSSE();
+
+    return () => {
+      if (eventSource) {
+        eventSource.close();
+      }
+      if (retryTimeout) {
+        clearTimeout(retryTimeout);
+      }
+    };
+  }, [getToken, orgId, leadId, loadLead, router]);
 
   useEffect(() => {
     if (scrollRef.current) {
