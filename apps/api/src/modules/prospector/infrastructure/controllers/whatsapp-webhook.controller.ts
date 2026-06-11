@@ -17,7 +17,7 @@ export class WhatsAppWebhookController {
   constructor(
     @InjectQueue('whatsapp-inbound') private readonly whatsappQueue: Queue,
     private readonly prisma: PrismaService,
-    private readonly googleCalendar: GoogleCalendarService, // Injetado para amarração/alinhamento com o worker
+    private readonly googleCalendar: GoogleCalendarService,
     private readonly sseService: ProspectorSseService,
   ) {}
 
@@ -106,9 +106,7 @@ export class WhatsAppWebhookController {
         const hasChannel = /meet|zoom/i.test(messageContent) || 
           (lead.metadata && typeof lead.metadata === 'object' && 
             (('meetingChannel' in (lead.metadata as any)) || ('channel' in (lead.metadata as any))));
-        const hasScheduleKeywords = /agenda|marca|confirm|quarta|quinta|sexta|terça|segunda|sábado|domingo|hora|h/i.test(messageContent);
-        const isChannelAndScheduleDefined = hasChannel && hasScheduleKeywords;
-
+        
         let updatedScore = lead.score;
         let updatedStatus = lead.status;
         let leadEmail = lead.email;
@@ -125,8 +123,9 @@ export class WhatsAppWebhookController {
         }
 
         let meetUrl: string | undefined = undefined;
+        let calendarEventId: string | undefined = undefined;
 
-        if (isChannelAndScheduleDefined && leadEmail) {
+        if (isEmailCaptured && hasChannel && leadEmail) {
           updatedScore = 95;
           updatedStatus = 'Meeting_Scheduled';
 
@@ -145,6 +144,7 @@ export class WhatsAppWebhookController {
             });
 
             meetUrl = calendarResult.meetUrl;
+            calendarEventId = calendarResult.eventId;
 
             await tx.appointment.create({
               data: {
@@ -155,7 +155,7 @@ export class WhatsAppWebhookController {
                 unitId: lead.unitId,
                 organizationId: lead.organizationId,
                 status: 'SCHEDULED',
-                googleEventId: calendarResult.eventId,
+                googleEventId: calendarEventId,
                 metadata: {
                   meetUrl,
                   origin: 'WEBHOOK_SYNCHRONOUS'
@@ -171,7 +171,9 @@ export class WhatsAppWebhookController {
         const leadMetadata = (lead.metadata && typeof lead.metadata === 'object') ? (lead.metadata as any) : {};
         const updatedMetadata = {
           ...leadMetadata,
-          scoreIA: updatedScore
+          scoreIA: updatedScore,
+          ...(calendarEventId ? { calendarEventId } : {}),
+          ...(meetUrl ? { meetUrl } : {})
         };
 
         await tx.interaction.create({

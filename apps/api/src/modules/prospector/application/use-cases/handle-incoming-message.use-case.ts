@@ -213,6 +213,20 @@ export class HandleIncomingMessageUseCase {
                  estimatedValue: 599
                }
              });
+
+             // Update lead metadata with Google Calendar event context
+             const currentLead = await tx.lead.findUnique({ where: { id: lead.id } });
+             const leadMeta = (currentLead?.metadata && typeof currentLead.metadata === 'object') ? (currentLead.metadata as any) : {};
+             await tx.lead.update({
+               where: { id: lead.id },
+               data: {
+                 metadata: {
+                   ...leadMeta,
+                   calendarEventId: calendarResult.eventId,
+                   meetUrl
+                 }
+               }
+             });
            });
          } catch (calendarError) {
            this.logger.error(`Failed to create calendar event synchronously: ${calendarError.message}`);
@@ -232,6 +246,22 @@ export class HandleIncomingMessageUseCase {
          }
       }
 
+      // Fetch latest appointment for this lead if we don't have a new meetUrl from the current use-case execution
+      let resolvedMeetUrl = meetUrl;
+      let calendarEventId: string | undefined = undefined;
+
+      const latestAppointment = await this.prisma.client.appointment.findFirst({
+        where: { leadId: lead.id, status: 'SCHEDULED' },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (latestAppointment) {
+        if (!resolvedMeetUrl) {
+          resolvedMeetUrl = (latestAppointment.metadata as any)?.meetUrl || undefined;
+        }
+        calendarEventId = latestAppointment.googleEventId || undefined;
+      }
+
       // 7. AI Response Generation
       const isBusinessHours = this.businessClock.isBusinessHours();
       
@@ -241,10 +271,17 @@ export class HandleIncomingMessageUseCase {
         take: 40
       });
 
-      // Inject the real meeting link in systemStatus context if available
-      const statusContext = meetUrl 
-        ? `${systemStatus}. O link real do convite gerado é: ${meetUrl}`
-        : systemStatus;
+      // Inject the real meeting link and event ID in systemStatus context if available
+      let statusContext = systemStatus;
+      if (resolvedMeetUrl || calendarEventId) {
+        statusContext += `. O agendamento foi realizado com sucesso.`;
+        if (resolvedMeetUrl) {
+          statusContext += ` Link do evento: ${resolvedMeetUrl}.`;
+        }
+        if (calendarEventId) {
+          statusContext += ` ID do evento no Google Calendar (calendarEventId): ${calendarEventId}.`;
+        }
+      }
  
       const aiResponse = await this.aiChat.generateResponse({
         lead: {
@@ -270,8 +307,8 @@ export class HandleIncomingMessageUseCase {
 
       let responseText = aiResponse.content;
       // Inject meeting link in the final response if available and not already present in text
-      if (meetUrl && !responseText.includes(meetUrl)) {
-        responseText = `${responseText}\n\n*Link do Google Meet:* ${meetUrl}`;
+      if (resolvedMeetUrl && !responseText.includes(resolvedMeetUrl)) {
+        responseText = `${responseText}\n\n*Link do Google Meet:* ${resolvedMeetUrl}`;
       }
 
       if (needsApproval) {
