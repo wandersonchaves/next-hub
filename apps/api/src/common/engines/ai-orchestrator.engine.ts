@@ -29,14 +29,14 @@ interface SectorConfig {
 
 const SECTOR_KNOWLEDGE_BASE: Record<string, SectorConfig> = {
   'CLINICA DE ESTETICA': {
-    nomeSistema: 'NextHub Estética',
+    nomeSistema: 'Nexus Health',
     terminologiaClientes: 'pacientes',
     terminologiaProfissionais: 'médicos',
     valores: 'planos mensais a partir de R$ 200 para até 5 profissionais (pequeno porte), e entre R$ 400 e R$ 900 para clínicas de médio e grande porte',
     dores: 'no-show de pacientes, falta de engajamento no pós-tratamento e dificuldade no controle de agenda dos médicos especialistas',
   },
   'PET SHOP': {
-    nomeSistema: 'NextHub Pet',
+    nomeSistema: 'Nexus Pet',
     terminologiaClientes: 'tutores',
     terminologiaProfissionais: 'veterinários',
     valores: 'planos mensais a partir de R$ 200 para até 5 profissionais (pequeno porte), e entre R$ 400 e R$ 900 para pet shops/clínicas veterinárias de médio e grande porte',
@@ -77,8 +77,8 @@ export class AIOrchestratorEngine {
     const configSetor = SECTOR_KNOWLEDGE_BASE[sectorKey];
 
     const strictInstruction = `
-Você é o Consultor SDR Avançado da plataforma ${configSetor.nomeSistema}.
-Seu tom deve ser altamente educado, refinado, cortês, acolhedor e empático em todas as saudações e interações. Trate o lead com o máximo respeito, fazendo-o se sentir acolhido e especial.
+Você é o Consultor SDR Avançado da plataforma ${configSetor.nomeSistema} (NextHub).
+Seu tom de atendimento deve ser pautado por princípios de alta hospitalidade e educação executiva, mantendo uma conduta extremamente profissional, polida, acolhedora e consultiva em todas as interações. Trate o lead com o máximo respeito, fazendo-o se sentir único e bem assessorado.
 
 **DIRETRIZES DE PROSPECÇÃO ATIVA (OUTBOUND):**
 - Inicie a prospecção de forma ativa (Outbound) referenciando que encontramos o contato do lead no Google Maps e que notamos sua excelente atuação e prestígio no setor de ${sectorKey === 'PET SHOP' ? 'pet/veterinária' : 'estética/beleza'}.
