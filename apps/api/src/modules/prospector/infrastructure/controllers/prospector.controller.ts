@@ -128,6 +128,8 @@ export class ProspectorController {
         name: true,
         phone: true,
         status: true,
+        score: true,
+        industry: true,
         lastInteractionAt: true,
         createdAt: true,
         appointments: {
@@ -147,6 +149,12 @@ export class ProspectorController {
       orderBy: { lastInteractionAt: 'desc' }
     });
 
-    return { leads };
+    const serializedLeads = leads.map(lead => ({
+      ...lead,
+      sector: lead.industry,
+      scoreIA: lead.score
+    }));
+
+    return { leads: serializedLeads };
   }
 }
