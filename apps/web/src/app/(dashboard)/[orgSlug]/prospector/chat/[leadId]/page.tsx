@@ -85,10 +85,12 @@ export default function LeadChatPage() {
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
+    let isCancelled = false;
 
     const connectSSE = async () => {
       try {
         const token = await getToken();
+        if (isCancelled) return;
         if (!token) return;
 
         const unitId = typeof window !== 'undefined' ? localStorage.getItem('x-unit-id') || '' : '';
@@ -98,7 +100,13 @@ export default function LeadChatPage() {
         
         eventSource = new EventSource(url);
 
+        if (isCancelled) {
+          eventSource.close();
+          return;
+        }
+
         eventSource.onmessage = (event) => {
+          if (isCancelled) return;
           try {
             const parsed = JSON.parse(event.data);
             const { leadId: updatedLeadId, type, newLeadId } = parsed;
@@ -120,6 +128,7 @@ export default function LeadChatPage() {
         };
 
         eventSource.onerror = (err) => {
+          if (isCancelled) return;
           console.warn("SSE connection error in Chat, retrying in 5 seconds...", err);
           eventSource?.close();
           retryTimeout = setTimeout(connectSSE, 5000);
@@ -132,6 +141,7 @@ export default function LeadChatPage() {
     connectSSE();
 
     return () => {
+      isCancelled = true;
       if (eventSource) {
         eventSource.close();
       }

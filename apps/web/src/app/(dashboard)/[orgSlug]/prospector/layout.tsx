@@ -11,10 +11,12 @@ function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let eventSource: EventSource | null = null;
     let retryTimeout: NodeJS.Timeout | null = null;
+    let isCancelled = false;
 
     const connectSSE = async () => {
       try {
         const token = await getToken();
+        if (isCancelled) return;
         if (!token) return;
 
         const unitId = typeof window !== 'undefined' ? localStorage.getItem('x-unit-id') || '' : '';
@@ -24,12 +26,19 @@ function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
         
         eventSource = new EventSource(url);
 
+        if (isCancelled) {
+          eventSource.close();
+          return;
+        }
+
         eventSource.onmessage = () => {
+          if (isCancelled) return;
           // Trigger route refresh on any real-time update/mutation from the server
           router.refresh();
         };
 
         eventSource.onerror = () => {
+          if (isCancelled) return;
           eventSource?.close();
           retryTimeout = setTimeout(connectSSE, 5000);
         };
@@ -46,6 +55,7 @@ function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
     }, 10000);
 
     return () => {
+      isCancelled = true;
       if (eventSource) eventSource.close();
       if (retryTimeout) clearTimeout(retryTimeout);
       clearInterval(interval);
