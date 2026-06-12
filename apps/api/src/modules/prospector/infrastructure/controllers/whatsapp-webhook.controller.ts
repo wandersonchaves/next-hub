@@ -100,10 +100,20 @@ export class WhatsAppWebhookController {
 
       try {
         // [GATEKEEPER BYPASS INTERCEPTOR]
-        if (lead.status === 'GATEKEEPER_STAGE') {
+        if (lead.status === 'GATEKEEPER_STAGE' || lead.status === 'MAPPING_DECISOR') {
           const newPhone = extractPhoneNumber(messageContent);
-          if (newPhone && newPhone !== lead.phone) {
-            this.logger.log(`GATEKEEPER BYPASS: Phone ${newPhone} extracted from lead ${lead.id}`);
+          const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+          const emailMatch = messageContent.match(emailRegex);
+          const newEmail = emailMatch ? emailMatch[0].trim().toLowerCase() : null;
+
+          const hasNewPhone = newPhone && newPhone !== lead.phone;
+          const hasNewEmail = !!newEmail;
+          const shouldBypass = lead.status === 'GATEKEEPER_STAGE'
+            ? hasNewPhone
+            : (hasNewPhone || hasNewEmail);
+
+          if (shouldBypass) {
+            this.logger.log(`GATEKEEPER BYPASS (${lead.status}): Phone=${newPhone}, Email=${newEmail} extracted from lead ${lead.id}`);
             
             await tx.interaction.create({
               data: {
@@ -117,9 +127,18 @@ export class WhatsAppWebhookController {
               }
             });
 
+            let oldLeadPhone = lead.phone;
+            let decisorPhone = newPhone;
+
+            if (!decisorPhone) {
+              oldLeadPhone = `${lead.phone}_gk_${Date.now()}`;
+              decisorPhone = lead.phone;
+            }
+
             await tx.lead.update({
               where: { id: lead.id },
               data: {
+                phone: oldLeadPhone,
                 status: 'ARCHIVED_GATEKEEPER',
                 lastInteractionAt: messageDate
               }
@@ -127,14 +146,15 @@ export class WhatsAppWebhookController {
 
             const newLeadName = lead.name.includes('Lead') ? 'Lead Decisor' : `${lead.name} (Decisor)`;
             let newLead = await tx.lead.findFirst({
-              where: { phone: newPhone, organizationId: lead.organizationId }
+              where: { phone: decisorPhone, organizationId: lead.organizationId }
             });
 
             if (!newLead) {
               newLead = await tx.lead.create({
                 data: {
                   name: newLeadName,
-                  phone: newPhone,
+                  phone: decisorPhone,
+                  email: newEmail || undefined,
                   status: 'NEW',
                   score: 0,
                   industry: lead.industry,
@@ -147,6 +167,7 @@ export class WhatsAppWebhookController {
               newLead = await tx.lead.update({
                 where: { id: newLead.id },
                 data: {
+                  email: newEmail || undefined,
                   status: 'NEW',
                   score: 0
                 }
