@@ -188,6 +188,7 @@ model Lead {
   unitId            String
   organizationId    String
   metadata          Json?    @default("{}")
+  isPending         Boolean  @default(false)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 

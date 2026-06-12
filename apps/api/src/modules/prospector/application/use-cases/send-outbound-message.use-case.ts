@@ -63,7 +63,8 @@ export class SendOutboundMessageUseCase {
         where: { id: lead.id },
         data: { 
           pendingMessage: null,
-          lastInteractionAt: new Date()
+          lastInteractionAt: new Date(),
+          isPending: false
         }
       });
 

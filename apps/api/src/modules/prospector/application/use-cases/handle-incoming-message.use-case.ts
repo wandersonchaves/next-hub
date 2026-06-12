@@ -339,7 +339,10 @@ export class HandleIncomingMessageUseCase {
           }),
           this.prisma.client.lead.update({
             where: { id: lead.id },
-            data: { lastInteractionAt: new Date() }
+            data: { 
+              lastInteractionAt: new Date(),
+              isPending: false
+            }
           })
         ]);
 

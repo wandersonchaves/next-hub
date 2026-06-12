@@ -140,7 +140,8 @@ export class WhatsAppWebhookController {
               data: {
                 phone: oldLeadPhone,
                 status: 'ARCHIVED_GATEKEEPER',
-                lastInteractionAt: messageDate
+                lastInteractionAt: new Date(),
+                isPending: true
               }
             });
 
@@ -160,7 +161,9 @@ export class WhatsAppWebhookController {
                   industry: lead.industry,
                   organizationId: lead.organizationId,
                   unitId: lead.unitId,
-                  metadata: {}
+                  metadata: {},
+                  lastInteractionAt: new Date(),
+                  isPending: true
                 }
               });
             } else {
@@ -169,7 +172,9 @@ export class WhatsAppWebhookController {
                 data: {
                   email: newEmail || undefined,
                   status: 'NEW',
-                  score: 0
+                  score: 0,
+                  lastInteractionAt: new Date(),
+                  isPending: true
                 }
               });
             }
@@ -293,7 +298,8 @@ export class WhatsAppWebhookController {
         await tx.lead.update({
           where: { id: lead.id },
           data: {
-            lastInteractionAt: messageDate,
+            lastInteractionAt: new Date(),
+            isPending: true,
             score: updatedScore,
             status: updatedStatus,
             email: leadEmail,
