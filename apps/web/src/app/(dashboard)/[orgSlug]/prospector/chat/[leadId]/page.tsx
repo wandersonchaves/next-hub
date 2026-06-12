@@ -245,6 +245,18 @@ export default function LeadChatPage() {
         {/* Área de Input */}
         <div className="p-4 border-t bg-background shrink-0 mt-auto">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
+            <button
+              type="button"
+              onClick={handleGeneratePitch}
+              disabled={isSubmitting}
+              className="md:hidden flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white shrink-0 shadow-lg shadow-amber-500/20 disabled:opacity-50 transition-all"
+            >
+              {isSubmitting ? (
+                <Loader2 size={20} className="animate-spin" />
+              ) : (
+                <Sparkles size={20} className="text-yellow-200" />
+              )}
+            </button>
             <div className="flex-1 relative flex">
               <textarea 
                 value={inputText}
