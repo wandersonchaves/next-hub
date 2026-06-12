@@ -11,6 +11,11 @@ export interface AIOrchestratorRequest {
   expectedFormat?: string;
   leadName?: string; // Para sanitização pós-geração
   sector?: string; // Para indexação do Knowledge Base
+  lead?: {
+    id: string;
+    name: string;
+    interactions?: any[];
+  };
 }
 
 export interface AIOrchestratorResponse<T = any> {
@@ -114,9 +119,23 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
    - Passo D (Fechamento): Assim que o link real do Meet for gerado pelo sistema, envie-o diretamente e finalize com um fechamento seco e objetivo. Não acrescente perguntas ou novos ganchos conversacionais para evitar loops e duplicidades de confirmação.
 4. FORMATO: Responda em parágrafos curtos (no máximo 2 ou 3 linhas por bloco), utilizando espaçamentos adequados e formatação de negrito nativa do WhatsApp (*texto*), reduzindo a densidade do texto e gerando negrito apenas via asterisco único.`;
 
+    // 1. Analisa a última interação real do histórico
+    const lastInteraction = request.lead?.interactions && request.lead.interactions[request.lead.interactions.length - 1];
+    const isFollowUp = lastInteraction && (lastInteraction.type === 'OUTBOUND' || lastInteraction.sender === 'IA');
+
     let systemContext = request.context.includes('INSTRUÇÃO SEVERA DE AGENDAMENTO E RITMO COMERCIAL')
       ? request.context
       : `${request.context}${strictInstruction}`;
+
+    // 2. Injeta dinamicamente a diretiva de Follow-up (Cobrança fria)
+    if (isFollowUp) {
+      systemContext += `\n\n[ALERTA CRÍTICO DE FLUXO]: O lead NÃO respondeu à nossa última mensagem enviada anteriormente. Ele está em silêncio.
+- É terminantemente PROIBIDO dizer "Obrigado por retornar", "Obrigado por responder" ou fingir que ele falou algo.
+- Sua tarefa é gerar uma mensagem curta, educada e gentil de acompanhamento (Follow-up) para tentar reengajá-lo.
+- Exemplo de abordagem: "Olá! Tudo bem? Passando apenas para garantir que nossa mensagem anterior não se perdeu na correria do seu dia a dia. Conseguiríamos alinhar aquela demonstração rápida de 5 minutos?"`;
+    } else {
+      systemContext += `\n\n[FLUXO PADRÃO]: O lead acabou de nos responder. Analise a dor dele e continue a qualificação ou agendamento.`;
+    }
 
     if (isMappingDecisor) {
       systemContext += `\n\n[ATENÇÃO - REGRA DE TRAVAMENTO IMPERATIVA]: O status atual do lead é MAPPING_DECISOR. Você DEVE emitir APENAS uma resposta polida solicitando o contato direto (WhatsApp/telefone) do gerente, proprietário ou decisor responsável. Não envie nenhuma informação comercial, preços ou agendamentos. Garanta também a formatação com asterisco único (*texto*) para negritos.`;

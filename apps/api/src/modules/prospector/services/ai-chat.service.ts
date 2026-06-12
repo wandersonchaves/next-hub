@@ -38,17 +38,17 @@ export class AIChatService {
   ) {}
 
   async generateResponse(ctx: AIChatContext, message: string): Promise<AIChatResponse> {
+    const interactions = await this.prisma.client.interaction.findMany({
+      where: { leadId: ctx.lead.id },
+      orderBy: { createdAt: 'asc' },
+      take: 40,
+    });
+
     let historyString = '';
 
     if (ctx.historyOverride) {
       historyString = ctx.historyOverride;
     } else {
-      const interactions = await this.prisma.client.interaction.findMany({
-        where: { leadId: ctx.lead.id },
-        orderBy: { createdAt: 'asc' },
-        take: 40,
-      });
-
       historyString = interactions
         .map(i => `${i.type === 'INBOUND' ? 'Lead' : 'SDR'}: ${i.content}`)
         .join('\n');
@@ -111,6 +111,11 @@ MENSAGEM ATUAL DO LEAD:
       message: contextualMessage,
       leadName: ctx.lead.name, // Passando o nome para sanitização
       sector: matchedSector, // Passando o setor para indexação do Knowledge Base
+      lead: {
+        id: ctx.lead.id,
+        name: ctx.lead.name,
+        interactions: interactions
+      },
       expectedFormat: `
         {
           "content": "Sua resposta curta, empática e focada em agendamento (Sintaxe WhatsApp: *texto*)",
