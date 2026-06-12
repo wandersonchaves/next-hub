@@ -245,12 +245,12 @@ export default function LeadChatPage() {
         {/* Área de Input */}
         <div className="p-4 border-t bg-background shrink-0 mt-auto">
           <div className="flex items-end gap-2 max-w-3xl mx-auto">
-            <div className="flex-1 relative">
+            <div className="flex-1 relative flex">
               <textarea 
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder="Digite sua mensagem estratégica..." 
-                className="w-full px-4 py-3 border rounded-2xl bg-muted/20 text-sm outline-none focus:ring-2 focus:ring-primary/50 resize-none min-h-[50px] max-h-48 transition-all scrollbar-hide"
+                className="w-full flex-1 break-words whitespace-pre-wrap px-4 py-3 border rounded-2xl bg-muted/20 text-sm outline-none focus:ring-2 focus:ring-primary/50 resize-none transition-all scrollbar-hide"
                 rows={Math.min(inputText.split('\n').length, 5)}
               />
             </div>
