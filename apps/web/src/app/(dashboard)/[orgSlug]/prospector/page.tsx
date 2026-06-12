@@ -27,6 +27,7 @@ interface Lead {
   status: ProspectorState | string;
   score: number;
   lastInteractionAt: string;
+  isPending?: boolean;
 }
 
 export default function ProspectorDashboard({ params }: { params: { orgSlug: string } }) {
@@ -114,7 +115,15 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
       accessorKey: "name" as keyof Lead,
       render: (val: string, item: Lead) => (
         <div className="flex flex-col">
-          <span className="font-bold text-sm">{val}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-bold text-sm">{val}</span>
+            {item.isPending && (
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+              </span>
+            )}
+          </div>
           <span className="text-xs text-muted-foreground">{item.phone}</span>
         </div>
       )
