@@ -129,10 +129,15 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
 
     // 2. Injeta dinamicamente a diretiva de Follow-up (Cobrança fria)
     if (isFollowUp) {
-      systemContext += `\n\n[ALERTA CRÍTICO DE FLUXO]: O lead NÃO respondeu à nossa última mensagem enviada anteriormente. Ele está em silêncio.
-- É terminantemente PROIBIDO dizer "Obrigado por retornar", "Obrigado por responder" ou fingir que ele falou algo.
-- Sua tarefa é gerar uma mensagem curta, educada e gentil de acompanhamento (Follow-up) para tentar reengajá-lo.
-- Exemplo de abordagem: "Olá! Tudo bem? Passando apenas para garantir que nossa mensagem anterior não se perdeu na correria do seu dia a dia. Conseguiríamos alinhar aquela demonstração rápida de 5 minutos?"`;
+      systemContext += `\n\n[ALERTA CRÍTICO DE FLUXO - FOLLOW-UP]: O lead está em silêncio e ignorou nossa abordagem anterior. 
+    
+    DIRETRIZES DE ATRAÇÃO PARA QUEBRAR O SILÊNCIO:
+    1. É terminantemente PROIBIDO repetir a mesma pergunta da mensagem anterior ou pedir o e-mail/agendamento agora. Isso afasta o cliente.
+    2. Gere uma mensagem extremamente curta (no máximo 3 linhas), informal, polida e instigante.
+    3. Use a estratégia de 'Gancho de Curiosidade Operacional'. Em vez de pedir dados, faça uma pergunta simples sobre o dia a dia dele para forçar uma resposta rápida.
+    
+    Exemplo de abordagem permitida:
+    "Olá! Tudo bem? Imagino que a rotina por aí esteja corrida. Só para eu entender: o maior desafio de vocês hoje com os ${configSetor.terminologiaClientes} é o esquecimento de horários ou o tempo gasto respondendo mensagens manualmente? Se preferir, me avise e combinamos um momento rápido."`;
     } else {
       systemContext += `\n\n[FLUXO PADRÃO]: O lead acabou de nos responder. Analise a dor dele e continue a qualificação ou agendamento.`;
     }
