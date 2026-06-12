@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { StateBadge, ProspectorState } from "@/components/prospector/state-badge";
 import { ROICalculator } from "@/components/prospector/roi-calculator";
 import { ChatInput } from "@/components/prospector/chat-input";
+import { LeadsList } from "@/components/prospector/leads-list";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
@@ -20,7 +21,11 @@ import {
   Zap,
   Mail,
   Target,
-  TrendingUp
+  TrendingUp,
+  Menu,
+  X,
+  Search,
+  RefreshCw
 } from "lucide-react";
 
 interface Interaction {
@@ -39,6 +44,8 @@ interface Lead {
   industry?: string;
   email?: string;
   interactions: Interaction[];
+  lastInteractionAt?: string;
+  isPending?: boolean;
 }
 
 export default function LeadChatPage() {
@@ -49,13 +56,17 @@ export default function LeadChatPage() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [lead, setLead] = useState<Lead | null>(null);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const loadLead = useCallback(async () => {
     try {
       const response = await fetcher<{ leads: Lead[] }>('/modules/prospector/leads');
+      setLeads(response.leads);
       const found = response.leads.find(l => l.id === leadId);
       if (found) setLead(found);
     } catch (err) {
@@ -169,6 +180,15 @@ export default function LeadChatPage() {
     }
   };
 
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [leadId]);
+
+  const filteredLeads = leads.filter(l => 
+    l.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    l.phone.includes(searchTerm)
+  );
+
   if (loading && !lead) {
     return (
       <div className="flex-1 flex items-center justify-center bg-muted/5">
@@ -192,6 +212,14 @@ export default function LeadChatPage() {
         {/* Header do Chat */}
         <div className="p-4 border-b bg-background/80 backdrop-blur-md flex justify-between items-center z-10 shrink-0">
           <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden h-8 w-8 rounded-full"
+              onClick={() => setIsMobileMenuOpen(true)}
+            >
+              <Menu size={16} />
+            </Button>
             <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary border border-primary/20 font-black">
               {lead.name?.charAt(0) || 'L'}
             </div>
@@ -347,6 +375,63 @@ export default function LeadChatPage() {
              </div>
           </div>
         </div>
+      </div>
+
+      {/* Mobile Drawer Navigation for Active Pipeline */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 md:hidden transition-opacity"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+      
+      <div className={cn(
+        "fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] bg-background border-r shadow-2xl z-50 md:hidden flex flex-col transition-transform duration-300 ease-in-out",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <div className="p-4 border-b space-y-4 bg-background shrink-0">
+          <div className="flex justify-between items-center">
+            <h2 className="font-black uppercase tracking-tight text-xs flex items-center gap-2 text-primary">
+              <Zap size={14} fill="currentColor" />
+              Pipeline Ativo
+            </h2>
+            <div className="flex items-center gap-1">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={loadLead} 
+                className="h-7 w-7 rounded-full"
+              >
+                <RefreshCw size={12} className={cn(loading && "animate-spin")} />
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={() => setIsMobileMenuOpen(false)} 
+                className="h-7 w-7 rounded-full"
+              >
+                <X size={16} />
+              </Button>
+            </div>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={14} />
+            <input 
+              type="text" 
+              placeholder="Pesquisar..." 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 border rounded-xl bg-muted/20 text-xs outline-none focus:ring-2 focus:ring-primary/50 transition-all"
+            />
+          </div>
+        </div>
+        
+        <LeadsList 
+          leads={filteredLeads as any} 
+          activeLeadId={leadId} 
+          orgSlug={orgSlug} 
+          loading={loading} 
+        />
       </div>
     </div>
   );
