@@ -149,11 +149,22 @@ export class ProspectorController {
       orderBy: { lastInteractionAt: 'desc' }
     });
 
-    const serializedLeads = leads.map(lead => ({
-      ...lead,
-      sector: lead.industry,
-      scoreIA: lead.score
-    }));
+    const serializedLeads = leads.map(lead => {
+      const serializedInteractions = lead.interactions.map(i => ({
+        ...i,
+        sender: i.type === 'INBOUND' ? 'LEAD' : 'SDR'
+      }));
+      const lastInteraction = serializedInteractions[0];
+      const isPending = lastInteraction ? lastInteraction.sender === 'LEAD' : false;
+
+      return {
+        ...lead,
+        sector: lead.industry,
+        scoreIA: lead.score,
+        interactions: serializedInteractions,
+        isPending
+      };
+    });
 
     return { leads: serializedLeads };
   }
