@@ -187,7 +187,7 @@ export default function LeadChatPage() {
   return (
     <div className="flex-1 grid grid-cols-9 h-full overflow-hidden">
       {/* Área do Chat Pura (6 Colunas) */}
-      <div className="col-span-6 flex flex-col bg-background relative border-r h-full overflow-hidden">
+      <div className="col-span-9 xl:col-span-6 flex flex-col bg-background relative border-r h-full overflow-hidden">
         {/* Header do Chat */}
         <div className="p-4 border-b bg-background/80 backdrop-blur-md flex justify-between items-center z-10 shrink-0">
           <div className="flex items-center gap-3">
@@ -267,7 +267,7 @@ export default function LeadChatPage() {
       </div>
 
       {/* Painel Executivo (3 Colunas) */}
-      <div className="col-span-3 bg-muted/5 p-6 space-y-6 overflow-y-auto custom-scrollbar">
+      <div className="hidden xl:block xl:col-span-3 bg-muted/5 p-6 space-y-6 overflow-y-auto custom-scrollbar">
         {/* Lead Score Dinâmico */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">

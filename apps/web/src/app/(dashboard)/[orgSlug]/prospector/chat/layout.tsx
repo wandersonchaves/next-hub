@@ -66,9 +66,9 @@ export default function ProspectorChatLayout({
   );
 
   return (
-    <div className="grid grid-cols-12 h-[calc(100vh-4rem)] w-full overflow-hidden bg-background">
+    <div className="grid grid-cols-12 h-[100dvh] w-full overflow-hidden bg-background">
       {/* Colunas 1 a 3: Lista de Contatos */}
-      <div className="col-span-3 border-r flex flex-col bg-muted/5 h-full overflow-hidden">
+      <div className="hidden md:flex md:col-span-3 border-r flex-col bg-muted/5 h-full overflow-hidden">
         <div className="p-4 border-b space-y-4 bg-background shrink-0">
           <div className="flex justify-between items-center">
             <h2 className="font-black uppercase tracking-tight text-xs flex items-center gap-2 text-primary">
@@ -100,7 +100,7 @@ export default function ProspectorChatLayout({
       </div>
 
       {/* Main Content Area (Cols 4 to 12) */}
-      <div className="col-span-9 flex flex-col relative h-full overflow-hidden w-full">
+      <div className="col-span-12 md:col-span-9 flex flex-col relative h-full overflow-hidden w-full">
         {children}
       </div>
     </div>
