@@ -11,5 +11,10 @@ export class ProspectorLead {
     public readonly status: string = 'NEW',
     public readonly pendingMessage?: string,
     public readonly lastInteractionAt: Date = new Date(),
+    public readonly isPending: boolean = false,
   ) {}
+
+  static calculateIsPending(lastInteractionSender?: string): boolean {
+    return lastInteractionSender === 'LEAD';
+  }
 }

@@ -18,6 +18,7 @@ import { CurrentOrg } from '../../../../common/decorators/org.decorator';
 import type { Organization } from '@enterprise/database';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { normalizePhone } from '../../../../common/utils/phone-normalization';
+import { LeadOutputDto } from '../dtos/lead-output.dto';
 
 @ApiTags('Nexus Prospector')
 @Controller('modules/prospector')
@@ -149,22 +150,7 @@ export class ProspectorController {
       orderBy: { lastInteractionAt: 'desc' }
     });
 
-    const serializedLeads = leads.map(lead => {
-      const serializedInteractions = lead.interactions.map(i => ({
-        ...i,
-        sender: i.type === 'INBOUND' ? 'LEAD' : 'SDR'
-      }));
-      const lastInteraction = serializedInteractions[0];
-      const isPending = lastInteraction ? lastInteraction.sender === 'LEAD' : false;
-
-      return {
-        ...lead,
-        sector: lead.industry,
-        scoreIA: lead.score,
-        interactions: serializedInteractions,
-        isPending
-      };
-    });
+    const serializedLeads = leads.map(lead => LeadOutputDto.fromPrisma(lead));
 
     return { leads: serializedLeads };
   }
