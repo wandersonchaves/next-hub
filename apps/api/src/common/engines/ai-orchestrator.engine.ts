@@ -142,6 +142,21 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
       systemContext += `\n\n[FLUXO PADRÃO]: O lead acabou de nos responder. Analise a dor dele e continue a qualificação ou agendamento.`;
     }
 
+    // Conte quantas mensagens consecutivas a IA enviou desde a última resposta do lead
+    let consecutiveAiMessages = 0;
+    if (request.lead?.interactions) {
+      const idx = request.lead.interactions
+        .slice()
+        .reverse()
+        .findIndex(i => i.type === 'INBOUND');
+      consecutiveAiMessages = idx === -1 ? request.lead.interactions.length : idx;
+    }
+
+    // Se a IA já enviou 2 follow-ups seguidos e o lead não respondeu, trave o fluxo
+    if (consecutiveAiMessages >= 2) {
+      systemContext += `\n\n[BLOQUEIO DE SEGURANÇA]: Você já tentou reengajar este lead duas vezes sem resposta. Não envie novas perguntas operacionais. Gere apenas uma linha curta de encerramento cortês, informando que estamos à disposição quando ele tiver tempo, e encerre.`;
+    }
+
     if (isMappingDecisor) {
       systemContext += `\n\n[ATENÇÃO - REGRA DE TRAVAMENTO IMPERATIVA]: O status atual do lead é MAPPING_DECISOR. Você DEVE emitir APENAS uma resposta polida solicitando o contato direto (WhatsApp/telefone) do gerente, proprietário ou decisor responsável. Não envie nenhuma informação comercial, preços ou agendamentos. Garanta também a formatação com asterisco único (*texto*) para negritos.`;
     }
