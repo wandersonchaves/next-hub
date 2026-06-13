@@ -29,7 +29,7 @@ export function useManualLeadMutation() {
         throw new Error("Organização não identificada.");
       }
 
-      await fetcher("/modules/prospector/leads/manual", {
+      await fetcher("/api/modules/prospector/leads/manual", {
         method: "POST",
         body: JSON.stringify({
           ...data,
