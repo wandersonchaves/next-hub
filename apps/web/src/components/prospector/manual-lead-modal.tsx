@@ -6,6 +6,8 @@ import { useForm, useFieldArray } from "react-hook-form";
 import { X, Plus, Trash2, UserPlus, Loader2, MessageSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useManualLeadMutation } from "@/hooks/use-manual-lead-mutation";
+import { useAuth } from "@/providers/auth-provider";
+import { useTenantConfig } from "@/hooks/use-tenant-config";
 
 interface HistoricalMessage {
   sender: "LEAD" | "IA";
@@ -27,6 +29,8 @@ interface ManualLeadModalProps {
 
 export function ManualLeadModal({ isOpen, onOpenChange, onSuccess }: ManualLeadModalProps) {
   const { mutate, loading } = useManualLeadMutation();
+  const { orgId } = useAuth();
+  const { activeUnitId } = useTenantConfig();
 
   const { register, control, handleSubmit, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: {
@@ -42,8 +46,12 @@ export function ManualLeadModal({ isOpen, onOpenChange, onSuccess }: ManualLeadM
   });
 
   const onSubmit = async (data: FormValues) => {
-    // Normalizações de dados adicionais se necessário
-    await mutate(data, {
+    const payload = {
+      ...data,
+      organizationId: orgId || "",
+      unitId: activeUnitId || "",
+    };
+    await mutate(payload, {
       onSuccess: () => {
         reset();
         onOpenChange(false);
