@@ -161,15 +161,19 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
       systemContext += `\n\n[ATENÇÃO - REGRA DE TRAVAMENTO IMPERATIVA]: O status atual do lead é MAPPING_DECISOR. Você DEVE emitir APENAS uma resposta polida solicitando o contato direto (WhatsApp/telefone) do gerente, proprietário ou decisor responsável. Não envie nenhuma informação comercial, preços ou agendamentos. Garanta também a formatação com asterisco único (*texto*) para negritos.`;
     }
 
+    const expectsJson = !!request.expectedFormat;
+    const responseFormat = expectsJson ? 'json' : undefined;
+
     // 1. LAYER 1: OpenRouter (Gemini Free) - Cost Zero
     try {
       this.logger.debug('Attempting L1: OpenRouter (Gemini Free)');
       const text = await this.openRouterAI.generate({
         system: systemContext,
         prompt: request.message,
+        responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
     } catch (err) {
       this.logger.warn(`OpenRouter failed: ${err.message}`);
     }
@@ -180,9 +184,10 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
       const text = await this.grokAI.generate({
         system: systemContext,
         prompt: request.message,
+        responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
     } catch (err) {
       this.logger.warn(`Grok-2 failed: ${err.message}`);
     }
@@ -193,9 +198,10 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
       const text = await this.openAI.generate({
         system: systemContext,
         prompt: request.message,
+        responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, !!request.expectedFormat, request.leadName);
+      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
     } catch (err) {
       this.logger.error(`AI Orchestration Failure: ${err.message}`);
     }
@@ -210,28 +216,18 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
   private parseAndSanitizeResponse<T>(text: string, expectsJson: boolean, leadName?: string): AIOrchestratorResponse<T> {
     let cleanText = text.trim();
 
-    // REGEX DE COMPATIBILIDADE WHATSAPP: Converte **negrito** para *negrito*
-    cleanText = cleanText.replace(/\*\*(.*?)\*\*/g, "*$1*");
-
-    // SANITIZAÇÃO PÓS-GERAÇÃO: Substitui placeholders pelo nome real ou saudação genérica
-    const templateTags = /{{first_name}}|{{nome}}|{{name}}|{nome}|{name}/gi;
-    if (leadName && leadName !== "Lead") {
-      cleanText = cleanText.replace(templateTags, leadName);
-    } else {
-      cleanText = cleanText.replace(templateTags, "Olá"); // Fallback amigável
-    }
-
     if (expectsJson) {
       try {
-        const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)\s*```/) || cleanText.match(/({[\s\S]*})/);
-        const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : cleanText;
-        const parsed = JSON.parse(jsonString);
+        // Pré-sanitizador de string ultra-rápido antes do JSON.parse()
+        const sanitizedJsonString = cleanText.replace(/```json\n?|```/g, '').trim();
+        const parsed = JSON.parse(sanitizedJsonString);
 
         // Sanitize inner content if it exists
         if (parsed.content) {
           let innerContent = parsed.content as string;
           innerContent = innerContent.replace(/\*\*(.*?)\*\*/g, "*$1*");
 
+          const templateTags = /{{first_name}}|{{nome}}|{{name}}|{nome}|{name}/gi;
           if (leadName && leadName !== "Lead") {
             innerContent = innerContent.replace(templateTags, leadName);
           } else {
@@ -246,17 +242,51 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
           rawResponse: cleanText,
         };
       } catch (e) {
-        this.logger.warn(`Failed to parse AI JSON response, falling back to regex extraction.`);
+        this.logger.warn(`Failed to parse AI JSON response directly, falling back to regex extraction.`);
 
         // Regex Fallback: Tenta extrair o campo "content" se o JSON quebrou mas o texto está lá
-        const contentMatch = cleanText.match(/"content":\s*"(.*?)"/s);
-        if (contentMatch) {
+        const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)\s*```/) || cleanText.match(/({[\s\S]*})/);
+        const jsonString = jsonMatch ? jsonMatch[1] || jsonMatch[0] : cleanText;
+        try {
+          const parsed = JSON.parse(jsonString);
+          if (parsed.content) {
+            let innerContent = parsed.content as string;
+            innerContent = innerContent.replace(/\*\*(.*?)\*\*/g, "*$1*");
+
+            const templateTags = /{{first_name}}|{{nome}}|{{name}}|{nome}|{name}/gi;
+            if (leadName && leadName !== "Lead") {
+              innerContent = innerContent.replace(templateTags, leadName);
+            } else {
+              innerContent = innerContent.replace(templateTags, "Olá");
+            }
+            parsed.content = innerContent;
+          }
           return {
-            content: contentMatch[1],
-            rawResponse: cleanText
+            content: parsed.content || cleanText,
+            extractedData: parsed as T,
+            rawResponse: cleanText,
           };
+        } catch (innerErr) {
+          const contentMatch = cleanText.match(/"content":\s*"(.*?)"/s);
+          if (contentMatch) {
+            return {
+              content: contentMatch[1],
+              rawResponse: cleanText
+            };
+          }
         }
       }
+    }
+
+    // REGEX DE COMPATIBILIDADE WHATSAPP: Converte **negrito** para *negrito*
+    cleanText = cleanText.replace(/\*\*(.*?)\*\*/g, "*$1*");
+
+    // SANITIZAÇÃO PÓS-GERAÇÃO: Substitui placeholders pelo nome real ou saudação genérica
+    const templateTags = /{{first_name}}|{{nome}}|{{name}}|{nome}|{name}/gi;
+    if (leadName && leadName !== "Lead") {
+      cleanText = cleanText.replace(templateTags, leadName);
+    } else {
+      cleanText = cleanText.replace(templateTags, "Olá"); // Fallback amigável
     }
 
     return {

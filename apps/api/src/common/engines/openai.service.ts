@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 
 export interface OpenAIRequest {
   prompt: string;
   system?: string;
+  responseFormat?: 'json';
 }
 
 @Injectable()
@@ -29,6 +30,7 @@ export class OpenAIService {
         model: openai('gpt-4o'),
         system: request.system,
         prompt: request.prompt,
+        ...(request.responseFormat === 'json' ? { output: Output.json() } : {}),
         abortSignal: AbortSignal.timeout(35000), // 35s timeout
       });
 

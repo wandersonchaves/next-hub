@@ -1,11 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createOpenAI } from '@ai-sdk/openai';
-import { generateText } from 'ai';
+import { generateText, Output } from 'ai';
 
 export interface GrokRequest {
   prompt: string;
   system?: string;
+  responseFormat?: 'json';
 }
 
 @Injectable()
@@ -34,6 +35,7 @@ export class GrokAIService {
         model: xai('grok-2'), 
         system: request.system,
         prompt: request.prompt,
+        ...(request.responseFormat === 'json' ? { output: Output.json() } : {}),
         abortSignal: AbortSignal.timeout(30000),
       });
 
