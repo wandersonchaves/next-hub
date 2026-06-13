@@ -33,6 +33,7 @@ export class CreateManualLeadDto {
   @IsNotEmpty()
   organizationId: string;
 
+  // unitId is strictly required since Lead model in DB requires unitId relation
   @IsString()
   @IsNotEmpty()
   unitId: string;
