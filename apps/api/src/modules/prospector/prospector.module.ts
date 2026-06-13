@@ -6,6 +6,8 @@ import { HandleIncomingMessageUseCase } from './application/use-cases/handle-inc
 import { SourceLeadsUseCase } from './application/use-cases/source-leads.use-case';
 import { GenerateSalesPitchUseCase } from './application/use-cases/generate-sales-pitch.use-case';
 import { SendOutboundMessageUseCase } from './application/use-cases/send-outbound-message.use-case';
+import { CreateLeadWithContextUseCase } from './application/use-cases/create-lead-with-context.use-case';
+import { LeadManualController } from './infrastructure/controllers/lead-manual.controller';
 import { PrismaLeadRepository, PrismaAppointmentRepository } from './infrastructure/adapters/prisma-prospector.repositories';
 import { GeminiAIService } from './infrastructure/ai/gemini-ai.service';
 import { OpenRouterAIService } from './infrastructure/ai/open-router-ai.service';
@@ -37,8 +39,9 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
       { name: 'calendar-orchestrator' },
     ),
   ],
-  controllers: [ProspectorController, WhatsAppWebhookController],
+  controllers: [ProspectorController, WhatsAppWebhookController, LeadManualController],
   providers: [
+    CreateLeadWithContextUseCase,
     HandleIncomingMessageUseCase,
     SourceLeadsUseCase,
     GenerateSalesPitchUseCase,
