@@ -8,6 +8,7 @@ import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { CacheModule, CACHE_MANAGER } from '@nestjs/cache-manager';
 import type { Cache } from 'cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
+import { getRedisConfig } from './common/config/redis.config';
 
 import { BillingModule } from './modules/nexthub/billing/billing.module';
 
@@ -74,15 +75,13 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
-        const password = config.get<string>('REDIS_PASSWORD');
-        const host = config.get<string>('REDIS_HOST', '127.0.0.1');
-        const port = config.get<number>('REDIS_PORT', 6379);
+        const redisConfig = getRedisConfig();
 
         return {
           connection: {
-            host,
-            port,
-            ...(password ? { password } : {}),
+            host: redisConfig.host,
+            port: redisConfig.port,
+            ...(redisConfig.password ? { password: redisConfig.password } : {}),
             // Required by BullMQ when using ioredis
             maxRetriesPerRequest: null,
             retryStrategy: (times) => {
@@ -102,17 +101,15 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
       isGlobal: true,
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
-        const password = config.get<string>('REDIS_PASSWORD');
-        const host = config.get<string>('REDIS_HOST', '127.0.0.1');
-        const port = config.get<number>('REDIS_PORT', 6379);
+        const redisConfig = getRedisConfig();
         
         return {
           store: await redisStore({
             socket: {
-              host,
-              port,
+              host: redisConfig.host,
+              port: redisConfig.port,
             },
-            password,
+            password: redisConfig.password,
             ttl: 600,
           }),
         };
