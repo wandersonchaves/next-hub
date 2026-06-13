@@ -11,7 +11,7 @@ import { RequireModule } from '../../../../common/decorators/module.decorator';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 
 @ApiTags('Nexus Prospector Manual')
-@Controller('prospector')
+@Controller('modules/prospector/leads')
 @RequireModule('PROSPECTOR')
 @UseGuards(MultiLevelAuthGuard, MembershipGuard, TenantContextGuard, ProspectorAdminGuard, ModuleAccessGuard)
 export class LeadManualController {
@@ -19,7 +19,7 @@ export class LeadManualController {
     private readonly createLeadWithContextUseCase: CreateLeadWithContextUseCase,
   ) {}
 
-  @Post('leads/manual')
+  @Post('manual')
   @ApiOperation({ summary: 'Register lead manually with historical message context' })
   async createManualLead(@Body() dto: CreateManualLeadDto) {
     const lead = await this.createLeadWithContextUseCase.execute(dto);
