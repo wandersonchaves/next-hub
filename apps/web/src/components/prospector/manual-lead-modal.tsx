@@ -30,7 +30,7 @@ interface ManualLeadModalProps {
 export function ManualLeadModal({ isOpen, onOpenChange, onSuccess }: ManualLeadModalProps) {
   const { mutate, loading } = useManualLeadMutation();
   const { orgId } = useAuth();
-  const { activeUnitId } = useTenantConfig();
+  const { activeUnitId, config } = useTenantConfig();
 
   const { register, control, handleSubmit, reset, setValue, watch } = useForm<FormValues>({
     defaultValues: {
@@ -46,11 +46,28 @@ export function ManualLeadModal({ isOpen, onOpenChange, onSuccess }: ManualLeadM
   });
 
   const onSubmit = async (data: FormValues) => {
+    // Extração rigorosa de contexto multi-tenant
+    const resolvedOrgId = orgId || "";
+    let resolvedUnitId = activeUnitId || "";
+
+    if (!resolvedUnitId && typeof window !== "undefined") {
+      resolvedUnitId = localStorage.getItem("x-unit-id") || "";
+    }
+
+    if (!resolvedUnitId && config?.units && config.units.length > 0) {
+      resolvedUnitId = config.units[0].id;
+    }
+
+    if (!resolvedOrgId) {
+      throw new Error("ID da Organização não encontrado na sessão.");
+    }
+
     const payload = {
       ...data,
-      organizationId: orgId || "",
-      unitId: activeUnitId || "",
+      organizationId: resolvedOrgId,
+      unitId: resolvedUnitId,
     };
+
     await mutate(payload, {
       onSuccess: () => {
         reset();
