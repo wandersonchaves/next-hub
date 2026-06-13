@@ -5,6 +5,7 @@ import { DataTable } from "@/components/ui/data-table";
 import { Button } from "@/components/ui/button";
 import { StateBadge, ProspectorState } from "@/components/prospector/state-badge";
 import { ProactiveSearchWidget } from "@/components/prospector/proactive-search-widget";
+import { ManualLeadModal } from "@/components/prospector/manual-lead-modal";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { useApi } from "@/hooks/use-api";
@@ -17,7 +18,8 @@ import {
   TrendingUp, 
   Search,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  UserPlus
 } from "lucide-react";
 
 interface Lead {
@@ -37,6 +39,7 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
 
   const loadLeads = useCallback(async () => {
     try {
@@ -199,6 +202,14 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
           <Button variant="outline" size="icon" onClick={() => loadLeads()} disabled={loading} className="rounded-xl">
             <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           </Button>
+          <Button 
+            className="gap-2 rounded-xl shadow-lg border-primary/20" 
+            variant="outline"
+            onClick={() => setIsManualModalOpen(true)}
+          >
+            <UserPlus size={16} />
+            Novo Lead Manual
+          </Button>
           <Link href={`/${orgSlug}/prospector/chat`}>
             <Button className="gap-2 rounded-xl shadow-lg border-primary/20" variant="outline">
               <MessageSquare size={16} />
@@ -261,6 +272,12 @@ export default function ProspectorDashboard({ params }: { params: { orgSlug: str
           data={filteredLeads}
         />
       </div>
+
+      <ManualLeadModal 
+        isOpen={isManualModalOpen} 
+        onOpenChange={setIsManualModalOpen} 
+        onSuccess={loadLeads} 
+      />
     </div>
   );
 }
