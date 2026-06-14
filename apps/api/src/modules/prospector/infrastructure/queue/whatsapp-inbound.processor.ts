@@ -1,4 +1,4 @@
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger } from '@nestjs/common';
 import { HandleIncomingMessageUseCase, IncomingMessageDto } from '../../application/use-cases/handle-incoming-message.use-case';
@@ -41,5 +41,22 @@ export class WhatsAppInboundProcessor extends WorkerHost {
       { organizationId: dto.organizationId, unitId: dto.unitId },
       () => this.handleIncomingMessage.execute(dto),
     );
+  }
+
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job, error: Error) {
+    const maxAttempts = job.opts.attempts ?? 5;
+    if (job.attemptsMade >= maxAttempts) {
+      this.logger.error(
+        `[DLQ-CRITICAL] Inbound Job ${job.id} failed permanently on attempt ${job.attemptsMade}/${maxAttempts}. ` +
+        `Payload: ${JSON.stringify(job.data)}. ` +
+        `Error: ${error.message}. Stack: ${error.stack}`
+      );
+    } else {
+      this.logger.warn(
+        `Inbound Job ${job.id} failed on attempt ${job.attemptsMade}/${maxAttempts}. Will retry. ` +
+        `Error: ${error.message}`
+      );
+    }
   }
 }
