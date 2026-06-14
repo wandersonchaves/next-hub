@@ -60,7 +60,25 @@ export class GenerateSalesPitchUseCase {
       systemStatus: 'MANUAL_SUGGESTION_REQUESTED'
     }, "O usuário solicitou uma sugestão de resposta manual agora.");
 
-    const suggestion = response.content;
+    let suggestion = response.content;
+
+    // Parse seguro do JSON para extrair o valor textual
+    try {
+      const trimmed = suggestion.trim();
+      if (trimmed.startsWith('{') || trimmed.includes('{')) {
+        const startIndex = trimmed.indexOf('{');
+        const endIndex = trimmed.lastIndexOf('}') + 1;
+        const jsonStr = startIndex !== -1 && endIndex !== -1 ? trimmed.slice(startIndex, endIndex) : trimmed;
+        const parsed = JSON.parse(jsonStr);
+        suggestion = parsed.response || parsed.content || suggestion;
+      }
+    } catch (e) {
+      this.logger.warn(`Failed to parse suggestion JSON, using regex fallback: ${e.message}`);
+      const match = suggestion.match(/"(?:response|content)"\s*:\s*"([^"]+)"/);
+      if (match && match[1]) {
+        suggestion = match[1];
+      }
+    }
 
     // 4. Persistence & Profiling
     await this.prisma.client.lead.update({
