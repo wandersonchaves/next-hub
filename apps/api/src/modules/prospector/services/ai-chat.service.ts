@@ -93,7 +93,8 @@ REGRAS ESTRITAS DE VERIFICAÇÃO DE HISTÓRICO:
 REGRAS DE SINTAXE E FORMATAÇÃO:
 - É TERMINANTEMENTE PROIBIDO utilizar chaves duplas, colchetes ou tags de template como {{first_name}} ou {{nome}} nas saudações. Use saudações diretas e humanas.
 - Toda formatação de destaque ou negrito deve utilizar estritamente a sintaxe do WhatsApp: apenas um asterisco no início e no fim da palavra (Ex: *importante* em vez de **importante**).
-- Nunca gere tabelas em formato Markdown de texto corrido (linhas com barras verticais e traços), pois elas quebram visualmente na tela do celular. Quando precisar listar fatores e valores, utilize listas com marcadores em tópicos limpos.`;
+- Nunca gere tabelas em formato Markdown de texto corrido (linhas com barras verticais e traços), pois elas quebram visualmente na tela do celular. Quando precisar listar fatores e valores, utilize listas com marcadores em tópicos limpos.
+- You must return a valid JSON object. The JSON must contain a single key named "response" holding the raw message string.`;
 
     const contextualMessage = `
 STATUS DO SISTEMA: ${ctx.systemStatus}
