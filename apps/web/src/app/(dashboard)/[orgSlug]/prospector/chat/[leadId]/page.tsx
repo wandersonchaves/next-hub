@@ -10,6 +10,7 @@ import { LeadsList } from "@/components/prospector/leads-list";
 import { useApi } from "@/hooks/use-api";
 import { useAuth } from "@/providers/auth-provider";
 import { cn } from "@/lib/utils";
+import { useSendMessage } from "@/modules/prospector/hooks/use-send-message";
 import { 
   Send, 
   User, 
@@ -33,6 +34,7 @@ interface Interaction {
   type: 'INBOUND' | 'OUTBOUND';
   content: string;
   createdAt: string;
+  pending?: boolean;
 }
 
 interface Lead {
@@ -53,6 +55,7 @@ export default function LeadChatPage() {
   const { fetcher } = useApi();
   const router = useRouter();
   const { getToken, orgId } = useAuth();
+  const { mutate: sendMessageMutate } = useSendMessage();
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [lead, setLead] = useState<Lead | null>(null);
@@ -160,16 +163,40 @@ export default function LeadChatPage() {
   const handleSendMessage = async () => {
     if (!lead || !inputText.trim() || isSubmitting) return;
     setIsSubmitting(true);
+    const textToSend = inputText;
+    setInputText("");
     try {
-      await fetcher(`/modules/prospector/leads/${lead.id}/send-message`, {
-        method: 'POST',
-        body: JSON.stringify({ text: inputText })
+      await sendMessageMutate({ leadId: lead.id, text: textToSend }, {
+        onMutate: (text) => {
+          const previousInteractions = [...(lead.interactions || [])];
+          const optimisticMessage: Interaction = {
+            id: `temp-${Date.now()}`,
+            content: text,
+            type: 'OUTBOUND',
+            createdAt: new Date().toISOString(),
+            pending: true,
+          };
+          setLead(prev => prev ? {
+            ...prev,
+            interactions: [optimisticMessage, ...(prev.interactions || [])]
+          } : null);
+          return { previousInteractions };
+        },
+        onError: (err, text, context: any) => {
+          if (context?.previousInteractions) {
+            setLead(prev => prev ? {
+              ...prev,
+              interactions: context.previousInteractions
+            } : null);
+          }
+        },
+        onSettled: () => {
+          loadLead();
+          setIsSubmitting(false);
+        }
       });
-      setInputText("");
-      await loadLead();
     } catch (err) {
       console.error("Failed to send message", err);
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -262,14 +289,17 @@ export default function LeadChatPage() {
                 "max-w-[85%] rounded-2xl p-4 shadow-sm relative text-sm leading-relaxed",
                 msg.type === 'INBOUND' 
                   ? "bg-background border rounded-tl-none border-slate-200" 
-                  : "bg-primary text-primary-foreground rounded-tr-none shadow-primary/20"
+                  : "bg-primary text-primary-foreground rounded-tr-none shadow-primary/20",
+                msg.pending && "opacity-60 animate-pulse"
               )}>
                 <p className="whitespace-pre-wrap">{msg.content}</p>
                 <span className={cn(
                   "text-[9px] block mt-2 text-right opacity-60 font-medium uppercase",
                   msg.type === 'OUTBOUND' ? "text-primary-foreground" : "text-muted-foreground"
                 )}>
-                  {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  {msg.pending 
+                    ? "Enviando..." 
+                    : new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </span>
               </div>
             </div>
