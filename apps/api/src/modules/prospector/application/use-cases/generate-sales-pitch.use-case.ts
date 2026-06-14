@@ -70,11 +70,11 @@ export class GenerateSalesPitchUseCase {
         const endIndex = trimmed.lastIndexOf('}') + 1;
         const jsonStr = startIndex !== -1 && endIndex !== -1 ? trimmed.slice(startIndex, endIndex) : trimmed;
         const parsed = JSON.parse(jsonStr);
-        suggestion = parsed.response || parsed.content || suggestion;
+        suggestion = parsed.response || parsed.content || parsed.manual_suggestion || parsed.suggestion || parsed.text || suggestion;
       }
     } catch (e) {
       this.logger.warn(`Failed to parse suggestion JSON, using regex fallback: ${e.message}`);
-      const match = suggestion.match(/"(?:response|content)"\s*:\s*"([^"]+)"/);
+      const match = suggestion.match(/"(?:response|content|manual_suggestion|suggestion|text)"\s*:\s*"([^"]+)"/);
       if (match && match[1]) {
         suggestion = match[1];
       }
