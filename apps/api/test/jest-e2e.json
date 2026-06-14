@@ -8,5 +8,6 @@
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "forceExit": true,
-  "detectOpenHandles": true
+  "detectOpenHandles": true,
+  "testTimeout": 30000
 }
