@@ -33,10 +33,10 @@ export class CreateManualLeadDto {
   @IsNotEmpty()
   organizationId: string;
 
-  // unitId is strictly required since Lead model in DB requires unitId relation
+  // unitId is optional in DTO, resolved to organization's default unit if not provided
   @IsString()
-  @IsNotEmpty()
-  unitId: string;
+  @IsOptional()
+  unitId?: string;
 
   @IsArray()
   @IsOptional()

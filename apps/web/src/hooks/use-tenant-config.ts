@@ -26,24 +26,24 @@ export function useTenantConfig() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
+      const data = await fetcher<TenantConfig>('/core/saas-control/config');
+      setConfig(data);
       
-      // Mocked for now as per previous cleanup
-      const mockConfig: TenantConfig = {
-        organizationId: 'current',
-        isBlocked: false,
-        status: 'ACTIVE',
-        activeModules: ['CORE', 'PROSPECTOR', 'HEALTH', 'PET'],
-        plan: 'PRO',
-        units: []
-      };
-
-      setConfig(mockConfig);
+      // Auto-select first unit if none selected
+      if (data.units && data.units.length > 0) {
+        const stored = localStorage.getItem('x-unit-id');
+        if (!stored || !data.units.some(u => u.id === stored)) {
+          localStorage.setItem('x-unit-id', data.units[0].id);
+          setActiveUnitId(data.units[0].id);
+          window.dispatchEvent(new Event('storage'));
+        }
+      }
     } catch (err) {
       setError(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetcher]);
 
   useEffect(() => {
     load();

@@ -20,6 +20,17 @@ export class CreateLeadWithContextUseCase {
     }
 
     return this.prisma.client.$transaction(async (tx) => {
+      let resolvedUnitId = unitId;
+      if (!resolvedUnitId) {
+        const defaultUnit = await tx.unit.findFirst({
+          where: { organizationId }
+        });
+        if (!defaultUnit) {
+          throw new Error('Nenhuma unidade cadastrada para esta organização.');
+        }
+        resolvedUnitId = defaultUnit.id;
+      }
+
       const existing = await tx.lead.findUnique({
         where: {
           phone_organizationId: {
@@ -39,7 +50,7 @@ export class CreateLeadWithContextUseCase {
           name,
           phone: cleanPhone,
           organizationId,
-          unitId,
+          unitId: resolvedUnitId,
           isPending: false,
           lastInteractionAt,
         },
@@ -51,7 +62,7 @@ export class CreateLeadWithContextUseCase {
           content: msg.content,
           type: msg.sender === 'LEAD' ? 'INBOUND' : 'OUTBOUND',
           leadId: lead.id,
-          unitId,
+          unitId: resolvedUnitId,
           organizationId,
           createdAt: new Date(msg.createdAt),
         }));
