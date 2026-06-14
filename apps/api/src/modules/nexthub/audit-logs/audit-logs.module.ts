@@ -4,11 +4,17 @@ import { AuditLogsService } from './audit-logs.service';
 import { AuditLogsProcessor } from './audit-logs.processor';
 import { AuditLogsController } from './audit-logs.controller';
 import { OrganizationModule } from '../organization/organization.module';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
 @Module({
   imports: [
     BullModule.registerQueue({
       name: 'audit-logs',
+    }),
+    BullBoardModule.forFeature({
+      name: 'audit-logs',
+      adapter: BullMQAdapter,
     }),
     forwardRef(() => OrganizationModule),
   ],

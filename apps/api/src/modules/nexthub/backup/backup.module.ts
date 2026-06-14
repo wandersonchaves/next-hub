@@ -2,11 +2,17 @@ import { Module, OnModuleInit } from '@nestjs/common';
 import { BullModule, InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { BackupProcessor } from './backup.processor';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
 @Module({
   imports: [
     BullModule.registerQueue({
       name: 'backups',
+    }),
+    BullBoardModule.forFeature({
+      name: 'backups',
+      adapter: BullMQAdapter,
     }),
   ],
   providers: [BackupProcessor],

@@ -6,11 +6,17 @@ import { EMAIL_PROVIDER } from '../../../common/interfaces/email.interface';
 import { ResendAdapter } from '../../../common/adapters/email/resend.adapter';
 import { MockEmailAdapter } from '../../../common/adapters/email/mock.adapter';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
 @Module({
   imports: [
     BullModule.registerQueue({
       name: 'notifications',
+    }),
+    BullBoardModule.forFeature({
+      name: 'notifications',
+      adapter: BullMQAdapter,
     }),
     ConfigModule,
   ],

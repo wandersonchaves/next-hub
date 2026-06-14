@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 import { ProspectorController } from './infrastructure/controllers/prospector.controller';
 import { WhatsAppWebhookController } from './infrastructure/controllers/whatsapp-webhook.controller';
 import { HandleIncomingMessageUseCase } from './application/use-cases/handle-incoming-message.use-case';
@@ -37,6 +39,12 @@ import { SaaSControlModule } from '../nexthub/saas-control/saas-control.module';
       { name: 'whatsapp-outbound' },
       { name: 'proactive-prospecting' },
       { name: 'calendar-orchestrator' },
+    ),
+    BullBoardModule.forFeature(
+      { name: 'whatsapp-inbound', adapter: BullMQAdapter },
+      { name: 'whatsapp-outbound', adapter: BullMQAdapter },
+      { name: 'proactive-prospecting', adapter: BullMQAdapter },
+      { name: 'calendar-orchestrator', adapter: BullMQAdapter },
     ),
   ],
   controllers: [ProspectorController, WhatsAppWebhookController, LeadManualController],
