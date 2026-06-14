@@ -3,6 +3,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { ThrottlerStorage, ThrottlerStorageService } from '@nestjs/throttler';
+import { PrismaService } from '../src/prisma/prisma.service';
 
 jest.setTimeout(30000);
 
