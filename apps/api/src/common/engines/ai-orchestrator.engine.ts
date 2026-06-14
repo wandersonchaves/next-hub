@@ -3,6 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { GrokAIService } from '../../modules/prospector/infrastructure/ai/grok-ai.service';
 import { OpenAIService } from './openai.service';
 import { OpenRouterAIService } from '../../modules/prospector/infrastructure/ai/open-router-ai.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
+import * as crypto from 'crypto';
 
 export interface AIOrchestratorRequest {
   context: string;
@@ -58,6 +61,7 @@ export class AIOrchestratorEngine {
     private readonly openRouterAI: OpenRouterAIService,
     private readonly grokAI: GrokAIService,
     private readonly openAI: OpenAIService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
   ) { }
 
   async generate<T = any>(request: AIOrchestratorRequest): Promise<AIOrchestratorResponse<T>> {
@@ -164,6 +168,31 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
     const expectsJson = !!request.expectedFormat;
     const responseFormat = expectsJson ? 'json' : undefined;
 
+    // Create a deterministic cache key based on LLM payload properties
+    const cachePayload = {
+      systemContext,
+      prompt: request.message,
+      responseFormat,
+      leadName: request.leadName,
+      sector: sectorKey,
+      history: request.history || [],
+    };
+    const payloadHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify(cachePayload))
+      .digest('hex');
+    const cacheKey = `ai-cache:${payloadHash}`;
+
+    try {
+      const cachedResponse = await this.cacheManager.get<string>(cacheKey);
+      if (cachedResponse) {
+        this.logger.log(`Semantic cache HIT for key: ${cacheKey}`);
+        return JSON.parse(cachedResponse);
+      }
+    } catch (cacheError) {
+      this.logger.warn(`Failed to read from cache: ${cacheError.message}`);
+    }
+
     // 1. LAYER 1: OpenRouter (Gemini Free) - Cost Zero
     try {
       this.logger.debug('Attempting L1: OpenRouter (Gemini Free)');
@@ -173,7 +202,11 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
         responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+      if (text) {
+        const result = this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+        await this.setCache(cacheKey, result);
+        return result;
+      }
     } catch (err) {
       this.logger.warn(`OpenRouter failed: ${err.message}`);
     }
@@ -187,7 +220,11 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
         responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+      if (text) {
+        const result = this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+        await this.setCache(cacheKey, result);
+        return result;
+      }
     } catch (err) {
       this.logger.warn(`Grok-2 failed: ${err.message}`);
     }
@@ -201,12 +238,25 @@ DIRETRIZES DE CADÊNCIA E RITMO COMERCIAL:
         responseFormat,
       });
 
-      if (text) return this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+      if (text) {
+        const result = this.parseAndSanitizeResponse<T>(text, expectsJson, request.leadName);
+        await this.setCache(cacheKey, result);
+        return result;
+      }
     } catch (err) {
       this.logger.error(`AI Orchestration Failure: ${err.message}`);
     }
 
     throw new Error(`Falha catastrófica: Todos os provedores de IA falharam (OpenRouter, Grok, OpenAI).`);
+  }
+
+  private async setCache(key: string, value: any): Promise<void> {
+    try {
+      // TTL set to 24 hours (24 * 60 * 60 * 1000 milliseconds)
+      await this.cacheManager.set(key, JSON.stringify(value), 24 * 60 * 60 * 1000);
+    } catch (err) {
+      this.logger.warn(`Failed to write to cache: ${err.message}`);
+    }
   }
 
   /**

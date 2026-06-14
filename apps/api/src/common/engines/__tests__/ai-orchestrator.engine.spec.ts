@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { OpenRouterAIService } from '../../../modules/prospector/infrastructure/ai/open-router-ai.service';
 import { GrokAIService } from '../../../modules/prospector/infrastructure/ai/grok-ai.service';
 import { OpenAIService } from '../openai.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 describe('AIOrchestratorEngine', () => {
   let engine: AIOrchestratorEngine;
@@ -41,6 +42,13 @@ describe('AIOrchestratorEngine', () => {
           provide: OpenAIService,
           useValue: {
             generate: jest.fn(),
+          },
+        },
+        {
+          provide: CACHE_MANAGER,
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
           },
         },
       ],
