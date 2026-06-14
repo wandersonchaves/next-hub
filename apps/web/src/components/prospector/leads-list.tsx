@@ -41,12 +41,10 @@ export function LeadCard({ lead, activeLeadId, orgSlug }: LeadCardProps) {
     <Link
       href={`/${orgSlug}/prospector/chat/${lead.id}`}
       className={cn(
-        "block p-4 border-b transition-all hover:bg-muted/30 relative",
-        lead.isPending
-          ? "border-l-4 border-l-blue-500 bg-blue-500/5"
-          : isActive
-            ? "bg-primary/5 border-l-4 border-l-primary"
-            : "border-l-4 border-l-transparent"
+        "block p-4 border-b transition-all relative",
+        isActive
+          ? "bg-slate-800 border-l-4 border-blue-500 text-white"
+          : "border-l-4 border-transparent hover:bg-slate-800/50 text-slate-300"
       )}
     >
       {lead.isPending ? (
