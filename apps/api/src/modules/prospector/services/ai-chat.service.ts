@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AIOrchestratorEngine } from '../../../common/engines/ai-orchestrator.engine';
 import { SDRConfigEngine } from '../infrastructure/sdr-config.engine';
 import { PrismaService } from '../../../prisma/prisma.service';
+import { ProspectorSseService } from './prospector-sse.service';
 
 export interface AIChatContext {
   lead: {
@@ -35,6 +36,7 @@ export class AIChatService {
     private readonly aiOrchestrator: AIOrchestratorEngine,
     private readonly sdrConfig: SDRConfigEngine,
     private readonly prisma: PrismaService,
+    private readonly sseService: ProspectorSseService,
   ) {}
 
   async generateResponse(ctx: AIChatContext, message: string): Promise<AIChatResponse> {
@@ -129,8 +131,39 @@ MENSAGEM ATUAL DO LEAD:
       `
     });
 
+    let content = response.extractedData?.content || response.content || '';
+
+    // Check if the content indicates a transition to MAPPING_DECISOR
+    const hasMappingDecisor = /MAPPING_DECISOR/i.test(content);
+    if (hasMappingDecisor) {
+      this.logger.log(`MAPPING_DECISOR trigger detected in AI response for lead ${ctx.lead.id}. Updating status and broadcasting...`);
+      
+      // Update the lead's status in the database to MAPPING_DECISOR
+      await this.prisma.client.lead.update({
+        where: { id: ctx.lead.id },
+        data: { status: 'MAPPING_DECISOR' },
+      });
+
+      // Fetch the accurate score for the lead to broadcast
+      const leadData = await this.prisma.client.lead.findUnique({
+        where: { id: ctx.lead.id },
+        select: { score: true }
+      });
+      const score = leadData?.score ?? 0;
+
+      // Broadcast the status update to the frontend via SSE
+      this.sseService.broadcast({
+        leadId: ctx.lead.id,
+        status: 'MAPPING_DECISOR',
+        scoreIA: score,
+      });
+
+      // Clean/strip the trigger MAPPING_DECISOR from the response string
+      content = content.replace(/[\s\*\-\[\]]*MAPPING_DECISOR[\s\*\-\[\]]*/gi, ' ').trim();
+    }
+
     return {
-      content: response.extractedData?.content || response.content,
+      content,
       operationalProfiling: response.extractedData?.operationalProfiling
     };
   }
