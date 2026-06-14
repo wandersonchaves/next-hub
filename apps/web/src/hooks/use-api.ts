@@ -81,18 +81,19 @@ export function useApi() {
       }
 
       // SAFE JSON PARSE
+      let data: any;
       try {
-        const data = JSON.parse(responseText);
-        
-        if (!response.ok) {
-          throw new Error(data.message || 'API request failed');
-        }
-
-        return data as T;
+        data = JSON.parse(responseText);
       } catch (parseError) {
         console.error("[JSON Error] Could not parse server response:", responseText);
         throw new Error("Erro de processamento nos dados do servidor.");
       }
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'API request failed');
+      }
+
+      return data as T;
 
     } catch (error: any) {
       clearTimeout(timeoutId);
