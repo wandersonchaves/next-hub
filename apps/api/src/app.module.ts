@@ -56,6 +56,10 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     BullBoardModule.forRoot({
       route: '/admin/queues',
       adapter: ExpressAdapter,
+      middleware: basicAuth({
+        users: { admin: process.env.ADMIN_PASS || 'admin' },
+        challenge: true,
+      }),
     }),
     AuthModule,
     PrismaModule,
@@ -165,17 +169,15 @@ export class AppModule implements OnModuleDestroy, NestModule {
   constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) { }
 
   configure(consumer: MiddlewareConsumer) {
-    const adminUser = process.env.ADMIN_USER || 'admin';
-    const adminPass = process.env.ADMIN_PASS || 'admin';
-
+    // consumer.apply(basicAuth({ users: { admin: process.env.ADMIN_PASS || "admin" }, challenge: true })).forRoutes("/admin/queues*");
     consumer
       .apply(
         basicAuth({
-          users: { [adminUser]: adminPass },
+          users: { admin: process.env.ADMIN_PASS || 'admin' },
           challenge: true,
         }),
       )
-      .forRoutes('/admin/queues*');
+      .forRoutes('/admin/queues*path');
   }
 
   async onModuleDestroy() {
