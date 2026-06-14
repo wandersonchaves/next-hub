@@ -2,6 +2,7 @@ import { Module, OnModuleDestroy, Inject, NestModule, MiddlewareConsumer } from 
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import * as basicAuth from 'express-basic-auth';
+import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './modules/nexthub/health/health.controller';
@@ -77,10 +78,19 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     WebhooksModule,
     BackupModule,
     PluginsModule,
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const redisUrl = config.get<string>('REDIS_URL') || 'redis://localhost:6379';
+        return {
+          throttlers: [{
+            ttl: 60000,
+            limit: 100,
+          }],
+          storage: new ThrottlerStorageRedisService(redisUrl),
+        };
+      },
+    }),
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
