@@ -69,15 +69,20 @@ export class GenerateSalesPitchUseCase {
         const startIndex = trimmed.indexOf('{');
         const endIndex = trimmed.lastIndexOf('}') + 1;
         const jsonStr = startIndex !== -1 && endIndex !== -1 ? trimmed.slice(startIndex, endIndex) : trimmed;
-        const parsed = JSON.parse(jsonStr);
-        suggestion = parsed.response || parsed.content || parsed.manual_suggestion || parsed.suggestion || parsed.text || suggestion;
+        const parsedData = JSON.parse(jsonStr);
+        
+        const extractedText = parsedData.response || Object.values(parsedData)[0];
+        
+        if (extractedText) {
+          // Limpa o texto removendo chaves residuais ou asteriscos indesejados
+          suggestion = String(extractedText)
+            .replace(/[{}]+/g, '')
+            .replace(/\*\*/g, '*')
+            .trim();
+        }
       }
     } catch (e) {
-      this.logger.warn(`Failed to parse suggestion JSON, using regex fallback: ${e.message}`);
-      const match = suggestion.match(/"(?:response|content|manual_suggestion|suggestion|text)"\s*:\s*"([^"]+)"/);
-      if (match && match[1]) {
-        suggestion = match[1];
-      }
+      this.logger.warn(`Failed to parse suggestion JSON, using fallback: ${e.message}`);
     }
 
     // 4. Persistence & Profiling
