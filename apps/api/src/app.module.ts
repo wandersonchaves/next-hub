@@ -90,6 +90,13 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
               return delay;
             },
           },
+          defaultJobOptions: {
+            attempts: 5,
+            backoff: {
+              type: 'exponential',
+              delay: 2000,
+            },
+          },
         };
       },
     }),
