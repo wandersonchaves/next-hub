@@ -1,5 +1,6 @@
 import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './modules/nexthub/health/health.controller';
@@ -137,6 +138,10 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
   controllers: [AppController, HealthController],
   providers: [
     AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     MembershipGuard,
     RolesGuard,
     UnitIsolationGuard,
