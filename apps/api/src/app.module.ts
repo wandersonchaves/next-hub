@@ -14,6 +14,9 @@ import { BillingModule } from './modules/nexthub/billing/billing.module';
 
 import { BullModule } from '@nestjs/bullmq';
 import { NotificationsModule } from './modules/nexthub/notifications/notifications.module';
+import { BullBoardModule } from '@bull-board/nestjs';
+import { ExpressAdapter } from '@bull-board/express';
+import { BullMQAdapter } from '@bull-board/api/bullMQAdapter';
 
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ProspectorModule } from './modules/prospector/prospector.module';
@@ -47,6 +50,10 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
 
 @Module({
   imports: [
+    BullBoardModule.forRoot({
+      route: '/admin/queues',
+      adapter: ExpressAdapter,
+    }),
     AuthModule,
     PrismaModule,
     TenantContextModule,
@@ -103,6 +110,10 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     BullModule.registerQueue(
       { name: 'data-archiver' },
     ),
+    BullBoardModule.forFeature({
+      name: 'data-archiver',
+      adapter: BullMQAdapter,
+    }),
     PrometheusModule.register(),
     CacheModule.registerAsync({
       isGlobal: true,
