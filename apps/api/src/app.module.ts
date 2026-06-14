@@ -1,6 +1,7 @@
-import { Module, OnModuleDestroy, Inject } from '@nestjs/common';
+import { Module, OnModuleDestroy, Inject, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import * as basicAuth from 'express-basic-auth';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { HealthController } from './modules/nexthub/health/health.controller';
@@ -150,8 +151,22 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     MultiLevelAuthGuard,
   ],
 })
-export class AppModule implements OnModuleDestroy {
+export class AppModule implements OnModuleDestroy, NestModule {
   constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) { }
+
+  configure(consumer: MiddlewareConsumer) {
+    const adminUser = process.env.ADMIN_USER || 'admin';
+    const adminPass = process.env.ADMIN_PASS || 'admin';
+
+    consumer
+      .apply(
+        basicAuth({
+          users: { [adminUser]: adminPass },
+          challenge: true,
+        }),
+      )
+      .forRoutes('/admin/queues*');
+  }
 
   async onModuleDestroy() {
     // cache-manager v7 uses 'stores' instead of 'store'
