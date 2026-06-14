@@ -1,4 +1,5 @@
 import { Controller, Post, Body, UseGuards, Get, Headers, Param, BadRequestException, Sse, MessageEvent } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Observable } from 'rxjs';
@@ -93,6 +94,7 @@ export class ProspectorController {
   }
 
   @Post('leads/:id/generate-pitch')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @ApiOperation({ summary: 'Generate AI sales pitch for a lead' })
   async generatePitch(
     @CurrentOrg() org: Organization,
