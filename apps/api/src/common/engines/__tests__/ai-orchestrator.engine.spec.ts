@@ -11,6 +11,7 @@ describe('AIOrchestratorEngine', () => {
   let openRouterAI: OpenRouterAIService;
   let grokAI: GrokAIService;
   let openAI: OpenAIService;
+  let cacheManager: any;
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -58,6 +59,7 @@ describe('AIOrchestratorEngine', () => {
     openRouterAI = module.get<OpenRouterAIService>(OpenRouterAIService);
     grokAI = module.get<GrokAIService>(GrokAIService);
     openAI = module.get<OpenAIService>(OpenAIService);
+    cacheManager = module.get(CACHE_MANAGER);
   });
 
   afterEach(() => {
@@ -122,6 +124,37 @@ describe('AIOrchestratorEngine', () => {
 
       await expect(engine.generate({ context: 'C', message: 'M' }))
         .rejects.toThrow('Falha catastrófica: Todos os provedores de IA falharam (OpenRouter, Grok, OpenAI).');
+    });
+
+    it('should bypass external LLM API calls on semantic cache hit (LLM bypass verification)', async () => {
+      const generatePitch = (request: any) => engine.generate(request);
+
+      const requestPayload = {
+        context: 'Contexto de Teste de Cache',
+        message: 'Mensagem de Teste de Cache',
+      };
+
+      const cachedResponseObj = {
+        content: 'Resposta do Cache Semântico',
+        rawResponse: 'Resposta do Cache Semântico',
+      };
+
+      // 1st call: Redis returns null (Cache Miss) -> LLM is called
+      (cacheManager.get as jest.Mock).mockResolvedValueOnce(null);
+      (openRouterAI.generate as jest.Mock).mockResolvedValueOnce('Resposta do Cache Semântico');
+
+      const res1 = await generatePitch(requestPayload);
+
+      expect(res1.content).toBe('Resposta do Cache Semântico');
+      expect(openRouterAI.generate).toHaveBeenCalledTimes(1);
+
+      // 2nd call: Redis returns the cached JSON response -> bypasses LLM call
+      (cacheManager.get as jest.Mock).mockResolvedValueOnce(JSON.stringify(cachedResponseObj));
+
+      const res2 = await generatePitch(requestPayload);
+
+      expect(res2.content).toBe('Resposta do Cache Semântico');
+      expect(openRouterAI.generate).toHaveBeenCalledTimes(1); // Remains at 1 call
     });
   });
 });
