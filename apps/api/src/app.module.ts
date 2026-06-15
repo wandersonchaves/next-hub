@@ -203,7 +203,7 @@ export class AppModule implements OnModuleDestroy, NestModule {
           challenge: true,
         }),
       )
-      .forRoutes('/admin/queues*path');
+      .forRoutes('/admin/queues*path'); // Protects /admin/queues and nested routes
   }
 
   async onModuleDestroy() {
