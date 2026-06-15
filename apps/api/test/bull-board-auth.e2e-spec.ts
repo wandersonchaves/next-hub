@@ -7,7 +7,7 @@ import { PrismaService } from '../src/prisma/prisma.service';
 
 jest.setTimeout(30000);
 
-describe('Bull-Board Auth (e2e)', () => {
+describe('Bull-Board Protection (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
