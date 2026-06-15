@@ -82,26 +82,14 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     WebhooksModule,
     BackupModule,
     PluginsModule,
-    ThrottlerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => {
-        if (process.env.NODE_ENV === 'test') {
-          return {
-            throttlers: [{
-              ttl: 60000,
-              limit: 100,
-            }],
-          };
-        }
-        const redisUrl = config.get<string>('REDIS_URL') || 'redis://localhost:6379';
-        return {
-          throttlers: [{
-            ttl: 60000,
-            limit: 100,
-          }],
-          storage: new ThrottlerStorageRedisService(redisUrl),
-        };
-      },
+    ThrottlerModule.forRoot({
+      throttlers: [{
+        ttl: 60000,
+        limit: 100,
+      }],
+      storage: process.env.NODE_ENV === 'test'
+        ? undefined
+        : new ThrottlerStorageRedisService(process.env.REDIS_URL || 'redis://localhost:6379'),
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
