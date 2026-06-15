@@ -10,7 +10,7 @@ import { GenerateSalesPitchUseCase } from '../src/modules/prospector/application
 
 jest.setTimeout(30000);
 
-describe('AI Rate Limiting (e2e)', () => {
+describe('AI Rate Limiting Threshold (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let accessToken: string;
