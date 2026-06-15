@@ -85,6 +85,14 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     ThrottlerModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        if (process.env.NODE_ENV === 'test') {
+          return {
+            throttlers: [{
+              ttl: 60000,
+              limit: 100,
+            }],
+          };
+        }
         const redisUrl = config.get<string>('REDIS_URL') || 'redis://localhost:6379';
         return {
           throttlers: [{
@@ -98,6 +106,19 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
+        if (process.env.NODE_ENV === 'test') {
+          const MockRedis = require('ioredis-mock');
+          return {
+            connection: new MockRedis(),
+            defaultJobOptions: {
+              attempts: 5,
+              backoff: {
+                type: 'exponential',
+                delay: 2000,
+              },
+            },
+          };
+        }
         const redisConfig = getRedisConfig();
 
         return {
@@ -135,6 +156,11 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
       isGlobal: true,
       inject: [ConfigService],
       useFactory: async (config: ConfigService) => {
+        if (process.env.NODE_ENV === 'test') {
+          return {
+            ttl: 600,
+          };
+        }
         const redisConfig = getRedisConfig();
         
         return {
