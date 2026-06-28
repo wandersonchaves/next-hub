@@ -198,6 +198,8 @@ model Lead {
   appointments      Appointment[]
   suggestedMessages SuggestedMessage[]
   interactions      Interaction[]
+  target            LeadTarget?
+  matches           MatchAssessment[]
 
   @@unique([phone, organizationId])
   @@index([organizationId])
@@ -350,6 +352,9 @@ model Organization {
   procedures          Procedure[]
   pets                Pet[]
   petServices         PetService[]
+  jobManifestations   JobManifestation[]
+  leadTargets         LeadTarget[]
+  matchAssessments    MatchAssessment[]
 }
 
 model LeadPipeline {
@@ -539,4 +544,67 @@ model WorkflowStep {
   order      Int
 
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+}
+
+model JobManifestation {
+  id             String   @id @default(cuid())
+  title          String
+  company        String
+  location       String
+  description    String   @db.Text
+  url            String
+  fingerprint    String
+  minSalary      Decimal?
+  maxSalary      Decimal?
+  currency       String?
+  provider       String
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  matches        MatchAssessment[]
+
+  @@unique([organizationId, fingerprint])
+  @@index([organizationId])
+}
+
+model LeadTarget {
+  id             String   @id @default(cuid())
+  leadId         String   @unique
+  desiredRole    String
+  desiredSalary  Decimal?
+  skills         String[]
+  experienceYears Int     @default(0)
+  organizationId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  lead         Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([leadId])
+}
+
+model MatchAssessment {
+  id                 String   @id @default(cuid())
+  leadId             String
+  jobManifestationId String
+  score              Int
+  explanation        String   @db.Text
+  matchedSkills      String[]
+  missingSkills      String[]
+  organizationId     String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  lead         Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  job          JobManifestation @relation(fields: [jobManifestationId], references: [id], onDelete: Cascade)
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, jobManifestationId])
+  @@index([organizationId])
+  @@index([leadId])
+  @@index([jobManifestationId])
 }
