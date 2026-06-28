@@ -25,6 +25,8 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ProspectorModule } from './modules/prospector/prospector.module';
 import { HealthModule } from './modules/health/health.module';
 import { PetModule } from './modules/pet/pet.module';
+import { JobAggregationModule } from './modules/job-aggregation/job-aggregation.module';
+import { LeadMatchingModule } from './modules/lead-matching/lead-matching.module';
 
 import { AnalyticsModule } from './modules/nexthub/analytics/analytics.module';
 import { AuditLogsModule } from './modules/nexthub/audit-logs/audit-logs.module';
@@ -77,6 +79,8 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     ProspectorModule,
     HealthModule,
     PetModule,
+    JobAggregationModule,
+    LeadMatchingModule,
     AnalyticsModule,
     TasksModule,
     WebhooksModule,
