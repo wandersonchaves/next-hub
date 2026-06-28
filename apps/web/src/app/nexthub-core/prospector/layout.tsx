@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
-
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
 
 function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -36,7 +34,6 @@ function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
 
         eventSource.onmessage = () => {
           if (isCancelled) return;
-          // Trigger route refresh on any real-time update/mutation from the server
           router.refresh();
         };
 
@@ -52,7 +49,6 @@ function ProspectorSyncGuard({ children }: { children: React.ReactNode }) {
 
     connectSSE();
 
-    // Fallback polling to ensure state reconciliation
     const interval = setInterval(() => {
       router.refresh();
     }, 10000);

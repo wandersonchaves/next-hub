@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   Building2,
   ChevronDown,
-  LogOut
+  LogOut,
+  Cpu,
+  Target
 } from "lucide-react";
 
 import { useUser, useAuth } from "@/providers/auth-provider";
@@ -62,7 +64,17 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
   const isMasterAdmin = orgRole === 'admin' || orgRole === 'org:admin' || (user?.email && user.email.endsWith('@nexthub.com'));
 
   const verticalItems = [
-    { name: "Prospector Omni", href: `/${orgSlug}/prospector`, icon: Zap, module: 'PROSPECTOR', emoji: "🚀" },
+    { 
+      name: "Prospector Omni", 
+      href: `/${orgSlug}/prospector`, 
+      icon: Zap, 
+      module: 'PROSPECTOR', 
+      emoji: "🚀",
+      children: [
+        { name: "Global Job Ingestion", href: `/${orgSlug}/prospector/jobs`, icon: Cpu },
+        { name: "Global Talent Matcher", href: `/${orgSlug}/prospector/matches`, icon: Target },
+      ]
+    },
     { name: "Nexus Health", href: `/${orgSlug}/nexus-health`, icon: Heart, module: 'HEALTH', emoji: "🩺" },
     { name: "Nexus Pet", href: `/${orgSlug}/nexus-pet`, icon: Dog, module: 'PET', emoji: "🐾" },
   ];
@@ -73,7 +85,7 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
   ];
 
   const activeVerticals = verticalItems.filter(item => 
-    isMasterAdmin || config?.activeModules.includes(item.module as VerticalModule)
+    item.module === 'PROSPECTOR' || isMasterAdmin || config?.activeModules.includes(item.module as VerticalModule)
   );
 
   const navigation = [ coreItems[0], ...activeVerticals, coreItems[1] ];
@@ -159,42 +171,94 @@ export function AppShell({ children, orgSlug }: AppShellProps) {
             </div>
           )}
         </div>
-        
         <nav className={cn("flex-1 px-4 space-y-1.5 overflow-y-auto custom-scrollbar pt-2 border-t border-border/10", isMinimized && "px-2")}>
           {navigation.map((item) => {
             const isActive = pathname === item.href || (item.href !== `/${orgSlug}` && pathname.startsWith(item.href));
             const Icon = (item as any).icon;
             const emoji = (item as any).emoji;
+            const children = (item as any).children;
 
             return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all group relative",
-                  isActive 
-                    ? "bg-primary text-primary-foreground shadow-xl shadow-primary/10 scale-[1.02]" 
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground hover:translate-x-1",
-                  isMinimized && "px-0 justify-center"
+              <div key={item.name} className="space-y-1 group/item relative">
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all group relative",
+                    isActive 
+                      ? "bg-primary text-primary-foreground shadow-xl shadow-primary/10 scale-[1.02]" 
+                      : "text-muted-foreground hover:bg-muted/50 hover:text-foreground hover:translate-x-1",
+                    isMinimized && "px-0 justify-center"
+                  )}
+                  title={isMinimized && !children ? item.name : ""}
+                >
+                  <div className={cn(
+                     "p-2 rounded-xl transition-colors shrink-0",
+                     isActive ? "bg-white/20" : "bg-muted group-hover:bg-primary/10"
+                  )}>
+                     <Icon size={18} className={cn(isActive ? "text-primary-foreground" : "group-hover:text-primary")} />
+                  </div>
+                  {!isMinimized && (
+                    <span className="flex-1 truncate tracking-tight animate-in fade-in slide-in-from-left-2 duration-300">
+                       {emoji && <span className="mr-1.5">{emoji}</span>}
+                       {item.name}
+                    </span>
+                  )}
+                  {(isActive && !isMinimized) && (
+                     <div className="absolute right-4 w-1.5 h-1.5 rounded-full bg-primary-foreground animate-pulse" />
+                  )}
+                </Link>
+
+                {(!isMinimized && children && (isActive || children.some((child: any) => pathname.startsWith(child.href)))) && (
+                  <div className="pl-12 pr-2 space-y-1 animate-in fade-in slide-in-from-top-2 duration-200">
+                    {children.map((child: any) => {
+                      const isChildActive = pathname === child.href;
+                      const ChildIcon = child.icon;
+                      return (
+                        <Link
+                          key={child.name}
+                          href={child.href}
+                          className={cn(
+                            "flex items-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition-all",
+                            isChildActive
+                              ? "bg-primary/10 text-primary border-l-2 border-primary pl-2"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                          )}
+                        >
+                          <ChildIcon size={12} />
+                          <span>{child.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-                title={isMinimized ? item.name : ""}
-              >
-                <div className={cn(
-                   "p-2 rounded-xl transition-colors shrink-0",
-                   isActive ? "bg-white/20" : "bg-muted group-hover:bg-primary/10"
-                )}>
-                   <Icon size={18} className={cn(isActive ? "text-primary-foreground" : "group-hover:text-primary")} />
-                </div>
-                {!isMinimized && (
-                  <span className="flex-1 truncate tracking-tight animate-in fade-in slide-in-from-left-2 duration-300">
-                     {emoji && <span className="mr-1.5">{emoji}</span>}
-                     {item.name}
-                  </span>
+
+                {(isMinimized && children) && (
+                  <div className="absolute left-full top-0 ml-2 w-56 bg-popover border border-border rounded-2xl p-2 shadow-2xl z-[100] hidden group-hover/item:block animate-in fade-in slide-in-from-left-2 duration-200">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 py-1.5 border-b border-border/50 mb-1 italic">
+                      {item.name}
+                    </p>
+                    {children.map((child: any) => {
+                      const isChildActive = pathname === child.href;
+                      const ChildIcon = child.icon;
+                      return (
+                        <Link
+                          key={child.name}
+                          href={child.href}
+                          className={cn(
+                            "flex items-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all mb-0.5 last:mb-0",
+                            isChildActive
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          )}
+                        >
+                          <ChildIcon size={14} />
+                          <span>{child.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
                 )}
-                {(isActive && !isMinimized) && (
-                   <div className="absolute right-4 w-1.5 h-1.5 rounded-full bg-primary-foreground animate-pulse" />
-                )}
-              </Link>
+              </div>
             );
           })}
         </nav>
