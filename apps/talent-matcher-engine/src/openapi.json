@@ -1,0 +1,365 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Talent Matcher Engine API",
+    "description": "API documentation for Job Aggregation and Lead Matching modules.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/organizations/{organizationId}/jobs/sync": {
+      "post": {
+        "summary": "Sync jobs from external providers",
+        "description": "Triggers a manual sync of job listings from Greenhouse and Lever providers.",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The unique identifier of the organization."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "limit": {
+                    "type": "integer",
+                    "description": "The maximum number of jobs to fetch per provider.",
+                    "default": 100
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sync completed successfully.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "aggregatedCount": {
+                      "type": "integer"
+                    },
+                    "duplicatesCount": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/jobs": {
+      "get": {
+        "summary": "List aggregated jobs",
+        "description": "Retrieve aggregated jobs with support for cursor-based pagination, text search, and provider filtering.",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The unique identifier of the organization."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The cursor for pagination."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "The number of items to return."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "A search string to filter jobs by title, company, or description."
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by job provider (e.g. greenhouse, lever)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of jobs.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/JobManifestation"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/organizations/{organizationId}/matches": {
+      "get": {
+        "summary": "List lead matching assessments",
+        "description": "Retrieve matching assessments between candidates and job manifestations with cursor-based pagination and minimum score filtering.",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The unique identifier of the organization."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "The cursor for pagination."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            },
+            "description": "The number of items to return."
+          },
+          {
+            "name": "minScore",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Filter matches with a score greater than or equal to this value."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of match assessments.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MatchAssessment"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": "string",
+                      "nullable": true
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "JobManifestation": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "compensation": {
+            "type": "object",
+            "properties": {
+              "min": {
+                "type": "number",
+                "nullable": true
+              },
+              "max": {
+                "type": "number",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          },
+          "provider": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MatchAssessment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "leadId": {
+            "type": "string"
+          },
+          "jobManifestationId": {
+            "type": "string"
+          },
+          "score": {
+            "type": "integer"
+          },
+          "explanation": {
+            "type": "string"
+          },
+          "matchedSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "missingSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lead": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string",
+                "nullable": true
+              },
+              "phone": {
+                "type": "string"
+              }
+            }
+          },
+          "job": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "company": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "minSalary": {
+                "type": "number",
+                "nullable": true
+              },
+              "maxSalary": {
+                "type": "number",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string",
+                "nullable": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

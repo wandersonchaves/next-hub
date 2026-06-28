@@ -2,7 +2,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Carrega o arquivo .env da raiz da app
-dotenv.config({ path: path.join(__dirname, '../.env') });
+dotenv.config({ path: path.join(__dirname, '../.env'), override: true });
 
 jest.mock('bullmq', () => {
   return {
@@ -14,6 +14,8 @@ jest.mock('bullmq', () => {
       resume: jest.fn().mockResolvedValue(undefined),
       isReady: jest.fn().mockResolvedValue(true),
       getName: jest.fn().mockReturnValue('mock-queue'),
+      getRepeatableJobs: jest.fn().mockResolvedValue([]),
+      removeRepeatableByKey: jest.fn().mockResolvedValue(true),
     })),
     Worker: jest.fn().mockImplementation(() => ({
       on: jest.fn().mockReturnThis(),
