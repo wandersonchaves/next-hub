@@ -3,7 +3,13 @@
   "private": true,
   "scripts": {
     "dev": "turbo run dev",
+    "dev:backend": "turbo run dev --filter=api --filter=gateway",
+    "dev:web": "turbo run dev --filter=@enterprise/web --filter=gateway",
+    "dev:all": "turbo run dev",
     "build": "turbo run build",
+    "build:api": "turbo run build --filter=api",
+    "build:gateway": "turbo run build --filter=gateway",
+    "build:web": "turbo run build --filter=@enterprise/web",
     "build:railway": "pnpm clean:force && pnpm db:generate && pnpm db:push && turbo run build",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
