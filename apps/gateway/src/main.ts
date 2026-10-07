@@ -109,5 +109,4 @@ async function bootstrap() {
     `Gateway is running on: http://localhost:${port} (Binding: ${host})`,
   );
 }
-bootstrap();
-
+void bootstrap();
