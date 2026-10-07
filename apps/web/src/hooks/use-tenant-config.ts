@@ -1,5 +1,6 @@
 import { useApi } from "./use-api";
-import { useState, useEffect, useCallback } from "react";
+import { useAuth } from "../providers/auth-provider";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export type VerticalModule = 'PROSPECTOR' | 'HEALTH' | 'PET' | 'CORE';
 
@@ -12,61 +13,111 @@ export interface TenantConfig {
   units: { id: string; name: string; type: string }[];
 }
 
+// Global in-memory cache and in-flight promise deduplicator
+let cachedConfig: TenantConfig | null = null;
+let cachedOrgId: string | null = null;
+let inFlightPromise: Promise<TenantConfig> | null = null;
+const listeners = new Set<(config: TenantConfig | null, activeUnitId: string | null) => void>();
+
+function notifyListeners(activeUnitId: string | null) {
+  listeners.forEach((listener) => listener(cachedConfig, activeUnitId));
+}
+
 /**
  * Hook to manage Tenant-level configuration and active modules.
- * Refactored to avoid hydration mismatches and obsolete API calls.
+ * Includes in-memory caching and in-flight request deduplication to prevent
+ * request storms to /core/saas-control/config across mounting components.
  */
 export function useTenantConfig() {
   const { fetcher } = useApi();
-  const [config, setConfig] = useState<TenantConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<any>(null);
-  const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
+  const { orgId } = useAuth();
 
-  const load = useCallback(async () => {
+  const isMatch = Boolean(orgId && cachedOrgId === orgId && cachedConfig);
+  const [config, setConfig] = useState<TenantConfig | null>(isMatch ? cachedConfig : null);
+  const [loading, setLoading] = useState(!isMatch);
+  const [error, setError] = useState<any>(null);
+  const [activeUnitId, setActiveUnitId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('x-unit-id');
+    }
+    return null;
+  });
+
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+
+  const load = useCallback(async (force = false) => {
+    // If we already have cached config for the current org and not forcing refresh, reuse it
+    if (!force && cachedConfig && cachedOrgId === orgId) {
+      setConfig(cachedConfig);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-      const data = await fetcher<TenantConfig>('/core/saas-control/config');
+      setError(null);
+
+      // Deduplicate concurrent in-flight requests
+      if (!inFlightPromise || force) {
+        inFlightPromise = fetcherRef.current<TenantConfig>('/core/saas-control/config');
+      }
+
+      const data = await inFlightPromise;
+      cachedConfig = data;
+      cachedOrgId = orgId || data.organizationId;
       setConfig(data);
-      
+
       // Auto-select first unit if none selected
+      let currentUnit = typeof window !== 'undefined' ? localStorage.getItem('x-unit-id') : null;
       if (data.units && data.units.length > 0) {
-        const stored = localStorage.getItem('x-unit-id');
-        if (!stored || !data.units.some(u => u.id === stored)) {
-          localStorage.setItem('x-unit-id', data.units[0].id);
-          setActiveUnitId(data.units[0].id);
-          window.dispatchEvent(new Event('storage'));
+        if (!currentUnit || !data.units.some((u) => u.id === currentUnit)) {
+          currentUnit = data.units[0].id;
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('x-unit-id', currentUnit);
+          }
         }
       }
+      setActiveUnitId(currentUnit);
+      notifyListeners(currentUnit);
     } catch (err) {
       setError(err);
     } finally {
+      inFlightPromise = null;
       setLoading(false);
     }
-  }, [fetcher]);
+  }, [orgId]);
 
   useEffect(() => {
-    load();
-    // Hydration-safe initial read of localStorage
-    if (typeof window !== 'undefined') {
-      setActiveUnitId(localStorage.getItem('x-unit-id'));
-    }
+    const updateHandler = (newConfig: TenantConfig | null, newUnitId: string | null) => {
+      setConfig(newConfig);
+      if (newUnitId !== null) {
+        setActiveUnitId(newUnitId);
+      }
+    };
+    listeners.add(updateHandler);
+
+    load(false);
+
+    return () => {
+      listeners.delete(updateHandler);
+    };
   }, [load]);
 
-  const selectUnit = (unitId: string) => {
+  const selectUnit = useCallback((unitId: string) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('x-unit-id', unitId);
-      setActiveUnitId(unitId);
-      window.dispatchEvent(new Event('storage'));
     }
-  };
+    setActiveUnitId(unitId);
+    notifyListeners(unitId);
+  }, []);
 
-  return { 
-    config, 
-    loading, 
-    error, 
-    refresh: load,
+  return {
+    config,
+    loading,
+    error,
+    refresh: () => load(true),
     selectUnit,
-    activeUnitId
+    activeUnitId,
   };
 }

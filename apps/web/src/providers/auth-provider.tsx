@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 
@@ -80,12 +80,12 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
     syncAuth();
   }, []);
 
-  const getToken = async () => {
+  const getToken = useCallback(async () => {
     if (typeof window === "undefined") return null;
     return Cookies.get("nexthub_token") || null;
-  };
+  }, []);
 
-  const login = (token: string, userObj: User, orgs: any[]) => {
+  const login = useCallback((token: string, userObj: User, orgs: any[]) => {
     if (typeof window === "undefined") return;
 
     Cookies.set("nexthub_token", token, { secure: false, sameSite: "strict", expires: 7 });
@@ -110,9 +110,9 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
     }
     
     window.location.href = "/dashboard";
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     if (typeof window === "undefined") return;
 
     Cookies.remove("nexthub_token");
@@ -125,7 +125,7 @@ export const NativeAuthProvider = ({ children }: { children: ReactNode }) => {
     setOrganization(null);
     
     window.location.href = "/login";
-  };
+  }, []);
 
   const updateOrganization = (newOrgId: string) => {
      // Implementation pending
