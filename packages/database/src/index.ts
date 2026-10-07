@@ -36,7 +36,16 @@ if (!databaseUrl && process.env.NODE_ENV !== 'test') {
   console.warn('WARNING: DATABASE_URL is not defined. Database connection will fail.')
 }
 
-const pool = new pg.Pool(databaseUrl ? { connectionString: databaseUrl } : {})
+const pool = new pg.Pool(
+  databaseUrl
+    ? {
+        connectionString: databaseUrl,
+        max: parseInt(process.env.DB_POOL_MAX || '5', 10),
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 5000,
+      }
+    : {},
+)
 const adapter = new PrismaPg(pool)
 
 export async function disconnect() {

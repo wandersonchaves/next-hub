@@ -1,4 +1,10 @@
-import { Module, OnModuleDestroy, Inject, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import {
+  Module,
+  OnModuleDestroy,
+  Inject,
+  NestModule,
+  MiddlewareConsumer,
+} from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import basicAuth from 'express-basic-auth';
@@ -53,6 +59,11 @@ import { ModuleAccessGuard } from './common/guards/module-access.guard';
 import { MultiLevelAuthGuard } from './common/guards/multi-level-auth.guard';
 import { DataArchiverWorker } from './common/workers/data-archiver.worker';
 
+const redisConfigForThrottler = getRedisConfig();
+const throttlerRedisUrl = redisConfigForThrottler.password
+  ? `redis://:${encodeURIComponent(redisConfigForThrottler.password)}@${redisConfigForThrottler.host}:${redisConfigForThrottler.port}`
+  : `redis://${redisConfigForThrottler.host}:${redisConfigForThrottler.port}`;
+
 @Module({
   imports: [
     BullBoardModule.forRoot({
@@ -87,13 +98,16 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
     BackupModule,
     PluginsModule,
     ThrottlerModule.forRoot({
-      throttlers: [{
-        ttl: 60000,
-        limit: 100,
-      }],
-      storage: process.env.NODE_ENV === 'test'
-        ? undefined
-        : new ThrottlerStorageRedisService(process.env.REDIS_URL || 'redis://localhost:6379'),
+      throttlers: [
+        {
+          ttl: 60000,
+          limit: 100,
+        },
+      ],
+      storage:
+        process.env.NODE_ENV === 'test'
+          ? undefined
+          : new ThrottlerStorageRedisService(throttlerRedisUrl),
     }),
     BullModule.forRootAsync({
       inject: [ConfigService],
@@ -120,6 +134,7 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
             ...(redisConfig.password ? { password: redisConfig.password } : {}),
             // Required by BullMQ when using ioredis
             maxRetriesPerRequest: null,
+            enableReadyCheck: false,
             retryStrategy: (times) => {
               // Reconnect after a delay
               const delay = Math.min(times * 200, 5000);
@@ -136,9 +151,7 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
         };
       },
     }),
-    BullModule.registerQueue(
-      { name: 'data-archiver' },
-    ),
+    BullModule.registerQueue({ name: 'data-archiver' }),
     BullBoardModule.forFeature({
       name: 'data-archiver',
       adapter: BullMQAdapter,
@@ -154,7 +167,7 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
           };
         }
         const redisConfig = getRedisConfig();
-        
+
         return {
           store: await redisStore({
             socket: {
@@ -184,7 +197,7 @@ import { DataArchiverWorker } from './common/workers/data-archiver.worker';
   ],
 })
 export class AppModule implements OnModuleDestroy, NestModule {
-  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) { }
+  constructor(@Inject(CACHE_MANAGER) private cacheManager: Cache) {}
 
   configure(consumer: MiddlewareConsumer) {
     // consumer.apply(basicAuth({ users: { admin: process.env.ADMIN_PASS || "admin" }, challenge: true })).forRoutes("/admin/queues*");
