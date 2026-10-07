@@ -8,10 +8,29 @@ import { CircuitBreaker, withExponentialBackoff } from './circuit-breaker';
 export class GreenhouseJobProvider implements IExternalJobProvider {
   private readonly circuitBreaker = new CircuitBreaker('GreenhouseJobProvider');
 
-  async fetchJobs(organizationId: string, query: string, limit: number = 10): Promise<JobManifestation[]> {
-    const boardToken = process.env.GREENHOUSE_BOARD_TOKEN || 'greenhouse-mock-token';
+  async fetchJobs(
+    organizationId: string,
+    query: string,
+    limit: number = 10,
+  ): Promise<JobManifestation[]> {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const boardToken = process.env.GREENHOUSE_BOARD_TOKEN;
 
-    if (boardToken === 'greenhouse-mock-token' || process.env.NODE_ENV === 'test') {
+    if (isProduction) {
+      if (!boardToken || boardToken === 'greenhouse-mock-token') {
+        throw new Error(
+          'Greenhouse board token is not configured for production environment',
+        );
+      }
+    }
+
+    const useMock =
+      !isProduction &&
+      (!boardToken ||
+        boardToken === 'greenhouse-mock-token' ||
+        process.env.NODE_ENV === 'test');
+
+    if (useMock) {
       const mockJobs: JobManifestation[] = [];
       for (let i = 1; i <= Math.min(limit, 3); i++) {
         mockJobs.push(
@@ -24,13 +43,14 @@ export class GreenhouseJobProvider implements IExternalJobProvider {
             provider: 'greenhouse',
             organizationId,
             compensation: { min: 90000, max: 130000, currency: 'USD' },
-          })
+          }),
         );
       }
       return mockJobs;
     }
 
-    const url = `https://boards-api.greenhouse.io/v1/boards/${boardToken}/jobs`;
+    const tokenToUse = boardToken || 'greenhouse-mock-token';
+    const url = `https://boards-api.greenhouse.io/v1/boards/${tokenToUse}/jobs`;
 
     const fetchAction = async () => {
       const response = await withExponentialBackoff(
@@ -40,7 +60,9 @@ export class GreenhouseJobProvider implements IExternalJobProvider {
       );
       const jobs = response.data.jobs || [];
       return jobs
-        .filter((job: any) => job.title.toLowerCase().includes(query.toLowerCase()))
+        .filter((job: any) =>
+          job.title.toLowerCase().includes(query.toLowerCase()),
+        )
         .slice(0, limit)
         .map((job: any) =>
           JobManifestation.create({
@@ -52,11 +74,14 @@ export class GreenhouseJobProvider implements IExternalJobProvider {
             provider: 'greenhouse',
             organizationId,
             compensation: { min: null, max: null, currency: null },
-          })
+          }),
         );
     };
 
     const fallbackAction = async () => {
+      if (isProduction) {
+        return [];
+      }
       const mockJobs: JobManifestation[] = [];
       for (let i = 1; i <= Math.min(limit, 3); i++) {
         mockJobs.push(
@@ -69,7 +94,7 @@ export class GreenhouseJobProvider implements IExternalJobProvider {
             provider: 'greenhouse',
             organizationId,
             compensation: { min: 90000, max: 130000, currency: 'USD' },
-          })
+          }),
         );
       }
       return mockJobs;

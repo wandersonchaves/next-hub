@@ -8,10 +8,27 @@ import { CircuitBreaker, withExponentialBackoff } from './circuit-breaker';
 export class LeverJobProvider implements IExternalJobProvider {
   private readonly circuitBreaker = new CircuitBreaker('LeverJobProvider');
 
-  async fetchJobs(organizationId: string, query: string, limit: number = 10): Promise<JobManifestation[]> {
-    const site = process.env.LEVER_SITE_TOKEN || 'lever-mock-site';
+  async fetchJobs(
+    organizationId: string,
+    query: string,
+    limit: number = 10,
+  ): Promise<JobManifestation[]> {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const site = process.env.LEVER_SITE_TOKEN;
 
-    if (site === 'lever-mock-site' || process.env.NODE_ENV === 'test') {
+    if (isProduction) {
+      if (!site || site === 'lever-mock-site') {
+        throw new Error(
+          'Lever site token is not configured for production environment',
+        );
+      }
+    }
+
+    const useMock =
+      !isProduction &&
+      (!site || site === 'lever-mock-site' || process.env.NODE_ENV === 'test');
+
+    if (useMock) {
       const mockJobs: JobManifestation[] = [];
       for (let i = 1; i <= Math.min(limit, 3); i++) {
         mockJobs.push(
@@ -24,13 +41,14 @@ export class LeverJobProvider implements IExternalJobProvider {
             provider: 'lever',
             organizationId,
             compensation: { min: 100000, max: 150000, currency: 'USD' },
-          })
+          }),
         );
       }
       return mockJobs;
     }
 
-    const url = `https://api.lever.co/v0/postings/${site}`;
+    const siteToUse = site || 'lever-mock-site';
+    const url = `https://api.lever.co/v0/postings/${siteToUse}`;
 
     const fetchAction = async () => {
       const response = await withExponentialBackoff(
@@ -40,23 +58,29 @@ export class LeverJobProvider implements IExternalJobProvider {
       );
       const postings = response.data || [];
       return postings
-        .filter((post: any) => post.text.toLowerCase().includes(query.toLowerCase()))
+        .filter((post: any) =>
+          post.text.toLowerCase().includes(query.toLowerCase()),
+        )
         .slice(0, limit)
         .map((post: any) =>
           JobManifestation.create({
             title: post.text,
             company: 'Lever Client Company',
             location: post.categories?.location || 'Remote',
-            description: post.descriptionPlain || 'Lever job posting description.',
+            description:
+              post.descriptionPlain || 'Lever job posting description.',
             url: post.hostedUrl,
             provider: 'lever',
             organizationId,
             compensation: { min: null, max: null, currency: null },
-          })
+          }),
         );
     };
 
     const fallbackAction = async () => {
+      if (isProduction) {
+        return [];
+      }
       const mockJobs: JobManifestation[] = [];
       for (let i = 1; i <= Math.min(limit, 3); i++) {
         mockJobs.push(
@@ -69,7 +93,7 @@ export class LeverJobProvider implements IExternalJobProvider {
             provider: 'lever',
             organizationId,
             compensation: { min: 100000, max: 150000, currency: 'USD' },
-          })
+          }),
         );
       }
       return mockJobs;
