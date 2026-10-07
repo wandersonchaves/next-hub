@@ -1,3 +1,9 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // Force reload to clear Clerk middleware detection cache
 const nextConfig = {
   transpilePackages: ["@enterprise/common", "@enterprise/database", "@enterprise/events", "@clerk/nextjs"],
@@ -12,6 +18,7 @@ const nextConfig = {
     },
   },
   experimental: {
+    outputFileTracingRoot: path.join(__dirname, '../../'),
     optimizePackageImports: ["lucide-react", "date-fns"],
   },
   async rewrites() {
