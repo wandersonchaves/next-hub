@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS='--max-old-space-size=4096' next dev",
-    "build": "next build && node -e \"const fs = require('fs'); const cp = (s, d) => { if (fs.existsSync(s)) { fs.mkdirSync(d, { recursive: true }); fs.cpSync(s, d, { recursive: true }); } }; cp('.next/static', '.next/standalone/apps/web/.next/static'); cp('.next/static', '.next/standalone/.next/static'); cp('public', '.next/standalone/apps/web/public'); cp('public', '.next/standalone/public');\"",
+    "build": "NODE_OPTIONS='--max-old-space-size=2048' next build && node -e \"const fs = require('fs'); const cp = (s, d) => { if (fs.existsSync(s)) { fs.mkdirSync(d, { recursive: true }); fs.cpSync(s, d, { recursive: true }); } }; cp('.next/static', '.next/standalone/apps/web/.next/static'); cp('.next/static', '.next/standalone/.next/static'); cp('public', '.next/standalone/apps/web/public'); cp('public', '.next/standalone/public');\"",
     "start": "node run-server.js",
     "lint": "next lint"
   },

@@ -24,22 +24,28 @@ let target = candidates.find((file) => fs.existsSync(file));
 // Self-healing fallback: If neither standalone nor BUILD_ID exists, trigger an automatic on-the-fly build
 if (!target && !fs.existsSync(path.join(appDir, '.next/BUILD_ID'))) {
   console.log('[Next.js Runner] No build artifacts (.next/BUILD_ID) found.');
-  console.log('[Next.js Runner] Running automatic on-the-fly build to recover...');
+  console.log('[Next.js Runner] Running automatic on-the-fly build with expanded memory limit...');
   try {
-    const buildRes = spawnSync('npx', ['next', 'build'], {
+    const nextBin = require.resolve('next/dist/bin/next');
+    const buildRes = spawnSync(process.execPath, [nextBin, 'build'], {
       cwd: appDir,
       stdio: 'inherit',
       env: {
         ...process.env,
         NODE_ENV: 'production',
+        NODE_OPTIONS: process.env.BUILD_NODE_OPTIONS || '--max-old-space-size=2048',
       },
     });
 
-    if (buildRes.status === 0) {
+    const buildIdCreated = fs.existsSync(path.join(appDir, '.next/BUILD_ID'));
+
+    if (buildRes.status === 0 && buildIdCreated) {
       console.log('[Next.js Runner] On-the-fly build completed successfully.');
       target = candidates.find((file) => fs.existsSync(file));
     } else {
-      console.error(`[Next.js Runner] On-the-fly build failed with exit code: ${buildRes.status}`);
+      console.error(
+        `[Next.js Runner] On-the-fly build failed (status: ${buildRes.status}, signal: ${buildRes.signal}, BUILD_ID created: ${buildIdCreated})`
+      );
     }
   } catch (err) {
     console.error('[Next.js Runner] Error executing on-the-fly build:', err);
@@ -78,6 +84,7 @@ if (target) {
       ...process.env,
       PORT: port,
       HOSTNAME: hostname,
+      NODE_OPTIONS: process.env.RUN_NODE_OPTIONS || '--max-old-space-size=256',
     },
   });
 
@@ -95,6 +102,7 @@ if (target) {
       ...process.env,
       PORT: port,
       HOSTNAME: hostname,
+      NODE_OPTIONS: process.env.RUN_NODE_OPTIONS || '--max-old-space-size=256',
     },
   });
 

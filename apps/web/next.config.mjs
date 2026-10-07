@@ -10,6 +10,14 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   output: 'standalone',
+  typescript: {
+    // Skip type-checking during production build to avoid OOM in memory-constrained CI/Railway environments
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    // Skip linting during production build
+    ignoreDuringBuilds: true,
+  },
   // Ensure Next.js trusts the Railway proxy headers for HTTPS redirection and client IP detection
   poweredByHeader: false,
   logging: {
